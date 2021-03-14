@@ -58,8 +58,6 @@ class SinusoidalDataGenerator(object):
 
         outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
         init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
-        print(init_inputs.shape)
-        print(outputs.shape)
         for func in range(self.batch_size):
             init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1],
                                                   [self.num_samples_per_class, self.dim_input])
