@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from data.qmul_loader import get_batch, train_people, test_people
-from data_generator import SinusoidalDataGenerator
+from data.data_generator import SinusoidalDataGenerator, PolynomialDataGenerator
 
 
 class Regressor(nn.Module):
@@ -34,14 +34,26 @@ class FeatureTransfer(nn.Module):
         self.device = device
 
     def train_loop(self, epoch, optimizer, params):
-        if params.dataset != "sine":
-            batch, batch_labels = get_batch(train_people)
-        else:
+        if params.dataset == "polynomials":
+            batch, batch_labels, degrees = PolynomialDataGenerator(params.update_batch_size * 2,
+                                                                   params.meta_batch_size,
+                                                                   params.output_dim,
+                                                                   params.context).generate()
+
+            batch = torch.from_numpy(batch)
+            batch_labels = torch.from_numpy(batch_labels)
+        elif params.dataset == "sines":
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
                                                                       params.meta_batch_size,
                                                                       params.output_dim,
                                                                       params.multidimensional_amp,
                                                                       params.multidimensional_phase).generate()
+            batch = torch.from_numpy(batch)
+            batch_labels = torch.from_numpy(batch_labels)
+        else:
+
+            batch, batch_labels = get_batch(train_people)
+
         batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
 
         for inputs, labels in zip(batch, batch_labels):

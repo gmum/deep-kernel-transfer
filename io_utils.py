@@ -80,12 +80,13 @@ def parse_args_regression(script):
     parser.add_argument('--seed', default=0, type=int, help='Seed for Numpy and pyTorch. Default: 0 (None)')
     parser.add_argument('--model', default='Conv3', help='model: Conv{3} / MLP{2}')
     parser.add_argument('--method', default='DKT', help='DKT / transfer')
-    parser.add_argument('--dataset', default='QMUL', help='QMUL / sines')
+    parser.add_argument('--dataset', default='QMUL', help='QMUL / sines / polynomials')
     parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
     parser.add_argument('--update_batch_size', default=5, type=int,
                         help='Number of examples used for inner gradient update (K for K-shot learning).')
     parser.add_argument('--meta_batch_size', default=5, type=int, help='Number of tasks sampled per meta-update')
     parser.add_argument('--output_dim', default=1, type=int, help='Input/output dim for generated dataset')
+    parser.add_argument('--context', action='store_true', help='Adding context to polynomials\' task')
     parser.add_argument('--multidimensional_amp', default=False, type=str2bool,
                         help='Different amplitudes per each example')
     parser.add_argument('--multidimensional_phase', default=False, type=str2bool,

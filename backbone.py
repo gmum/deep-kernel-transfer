@@ -101,6 +101,31 @@ class BatchNorm2d_fw(nn.BatchNorm2d): #used in MAML to forward input with fast w
             out = F.batch_norm(x, running_mean, running_var, self.weight, self.bias, training = True, momentum = 1)
         return out
 
+# Model for sines task
+class MLP(nn.Module):
+    def __init__(self, input_dim=1, output_dim=1, hidden_dim=40):
+        super(MLP, self).__init__()
+        self.hidden_dim=40
+        self.model = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, output_dim))
+    def forward (self, x):
+        return self.model(x)
+
+# Model for polynomials
+class MLPLarge(nn.Module):
+    def __init__(self, input_dim=1, output_dim=1, hidden_dim=100):
+        super(MLPLarge, self).__init__()
+        self.hidden_dim=hidden_dim
+        self.model = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, output_dim))
+    def forward (self, x):
+        return self.model(x)
+
+
 # Simple Conv Block
 class ConvBlock(nn.Module):
     maml = False #Default

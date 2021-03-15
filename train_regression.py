@@ -25,10 +25,12 @@ params.checkpoint_dir = '%scheckpoints/%s/%s_%s' % (configs.save_dir, params.dat
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 logging.info('Device: {}'.format(device))
 
-bb = backbone.Conv3().to(device)
+# bb = backbone.Conv3().to(device)
+
+bb = backbone.MLP(input_dim=2, output_dim=params.output_dim, hidden_dim=400).to(device)
 
 if params.method == 'DKT':
-    model = DKT(bb, device)
+    model = DKT(bb, params, device)
 elif params.method == 'transfer':
     model = FeatureTransfer(bb, device)
 else:
