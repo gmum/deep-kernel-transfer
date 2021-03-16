@@ -109,35 +109,35 @@ class PolynomialDataGenerator(object):
 
         outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
 
+        one_hot_degrees = np.zeros([self.batch_size, self.polynomial_degrees[-1]])
+        for func in range(self.batch_size):
+            one_hot_degrees[func, degrees[func] - 1] = 1.0
+
         # If context is True, we add the the degree of the polynomial
         if self.context:
-            # init_inputs = np.zeros([self.batch_size, self.num_samples_per_class + 1, self.dim_input])
-            init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input + 1])
+            # init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input + 1])
+            init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input + self.polynomial_degrees[-1]])
         else:
             init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
 
         for func in range(self.batch_size):
             if self.context:
                 # init_inputs[func] = np.concatenate((np.random.uniform(self.input_range[0], self.input_range[1],
-                #                                                       [self.num_samples_per_class, self.dim_input]),
-                #                                     np.array(degrees[func]).reshape((1, self.dim_input))),
-                #                                    axis=0)
-                # print(degrees[func])
-                # print(np.full([self.num_samples_per_class, self.dim_input], degrees[func]))
-                # print(np.full([self.num_samples_per_class, self.dim_input], degrees[func]).shape)
+                #                                                   [self.num_samples_per_class, self.dim_input]),
+                #                                     np.full([self.num_samples_per_class, self.polynomial_degrees[-1]], degrees[func])), axis=1)
                 init_inputs[func] = np.concatenate((np.random.uniform(self.input_range[0], self.input_range[1],
-                                                                  [self.num_samples_per_class, self.dim_input]),
-                                                    np.full([self.num_samples_per_class, self.dim_input], degrees[func])), axis=1)
+                                                                      [self.num_samples_per_class, self.dim_input]),
+                                                    np.full([self.num_samples_per_class, self.polynomial_degrees[-1]], one_hot_degrees[func])), axis=1)
             else:
                 init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1],
                                                       [self.num_samples_per_class, self.dim_input])
             if input_idx is not None:
-                if self.context:
-                    init_inputs[:, input_idx:-1, 0] = np.linspace(self.input_range[0], self.input_range[1],
-                                                                  num=self.num_samples_per_class - input_idx, retstep=False)
-                else:
-                    init_inputs[:, input_idx:, 0] = np.linspace(self.input_range[0], self.input_range[1],
-                                                                num=self.num_samples_per_class - input_idx, retstep=False)
+                # if self.context:
+                #     init_inputs[:, input_idx:-1, 0] = np.linspace(self.input_range[0], self.input_range[1],
+                #                                                   num=self.num_samples_per_class - input_idx, retstep=False)
+                # else:
+                init_inputs[:, input_idx:, 0] = np.linspace(self.input_range[0], self.input_range[1],
+                                                            num=self.num_samples_per_class - input_idx, retstep=False)
 
         # if self.context:
         #     init_inputs_to_generate = init_inputs[:, : -1, :]
@@ -148,9 +148,7 @@ class PolynomialDataGenerator(object):
         for func in range(self.batch_size):
             values = coefficients[func, 0, 0]
             for deg in range(self.polynomial_degrees[0], self.polynomial_degrees[-1] + 1):
-                # values += coefficients[func, deg, 0] * np.power(init_inputs_to_generate[func], deg)
                 values += coefficients[func, deg, 0] * np.power(init_inputs_to_generate[func, :, 0], deg)
-            # outputs[func] = values
             outputs[func] = values.reshape((self.num_samples_per_class, self.dim_output))
 
         return init_inputs.astype(np.float32), outputs.astype(np.float32), degrees.astype(np.float32)

@@ -113,11 +113,12 @@ class MLP(nn.Module):
         return self.model(x)
 
 # Model for polynomials
-class MLPLarge(nn.Module):
-    def __init__(self, input_dim=1, output_dim=1, hidden_dim=100):
-        super(MLPLarge, self).__init__()
+class MLPOneHot(nn.Module):
+    def __init__(self, input_dim=6, output_dim=1, hidden_dim=40):
+        super(MLPOneHot, self).__init__()
         self.hidden_dim=hidden_dim
         self.model = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(),
+                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
                                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
                                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
                                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),

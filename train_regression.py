@@ -27,7 +27,7 @@ logging.info('Device: {}'.format(device))
 
 # bb = backbone.Conv3().to(device)
 
-bb = backbone.MLP(input_dim=2, output_dim=params.output_dim, hidden_dim=400).to(device)
+bb = backbone.MLPOneHot(input_dim=6, output_dim=params.output_dim, hidden_dim=100).to(device)
 
 if params.method == 'DKT':
     model = DKT(bb, params, device)

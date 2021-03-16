@@ -241,7 +241,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
             self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=100, ard_num_dims=1)
         elif (kernel == "nn"):
             # kernel = NNKernel(input_dim=2916, output_dim=16, num_layers=1, hidden_dim=16)
-            kernel = NNKernel(input_dim=1, output_dim=1, num_layers=5, hidden_dim=128)
+            kernel = NNKernel(input_dim=1, output_dim=1, num_layers=2, hidden_dim=16)
             self.covar_module = kernel
         else:
             raise ValueError(
