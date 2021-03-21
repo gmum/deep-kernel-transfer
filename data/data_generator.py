@@ -65,4 +65,4 @@ class SinusoidalDataGenerator(object):
                 init_inputs[:, input_idx:, 0] = np.linspace(self.input_range[0], self.input_range[1],
                                                             num=self.num_samples_per_class - input_idx, retstep=False)
             outputs[func] = amp[func] * np.sin(init_inputs[func] - phase[func])
-        return init_inputs, outputs, amp, phase
+        return init_inputs.astype(np.float32), outputs.astype(np.float32), amp.astype(np.float32), phase.astype(np.float32)
