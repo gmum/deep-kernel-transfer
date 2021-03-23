@@ -14,7 +14,7 @@ class Config:
             if args.dataset == "sines":
                 self.nn_config["input_dim"]= args.output_dim
             elif args.dataset == "nasdaq":
-                self.nn_config["input_dim"]= 82
+                self.nn_config["input_dim"]= args.output_dim
             elif args.dataset == "QMUL":
                 self.nn_config["input_dim"]= 2916
             elif args.dataset == "CUB":

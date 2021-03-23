@@ -4,7 +4,6 @@ import gpytorch
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset
 
 from data.data_generator import SinusoidalDataGenerator
 from data.nasdaq_loader import Nasdaq100padding
@@ -26,12 +25,12 @@ class DKT(nn.Module):
 
         #        if (train_x is None): train_x = torch.ones(19, 2916).to(self.device)
         #        if (train_y is None): train_y = torch.ones(19).to(self.device)
-        # if self.num_tasks == 1:
-        #     if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
-        #     if (train_y is None): train_y = torch.ones(10).to(self.device)
-        # else:
-        if (train_x is None): train_x = torch.ones(100, 82).to(self.device)
-        if (train_y is None): train_y = torch.ones(1, 82).to(self.device)
+        if self.num_tasks == 1:
+            if (train_x is None): train_x = torch.ones(5, 1).to(self.device)
+            if (train_y is None): train_y = torch.ones(5).to(self.device)
+        else:
+            if (train_x is None): train_x = torch.ones(10, self.num_tasks).to(self.device)
+            if (train_y is None): train_y = torch.ones(10, self.num_tasks).to(self.device)
 
         if self.num_tasks == 1:
             likelihood = gpytorch.likelihoods.GaussianLikelihood()
@@ -66,17 +65,25 @@ class DKT(nn.Module):
                                                                       params.output_dim,
                                                                       params.multidimensional_amp,
                                                                       params.multidimensional_phase).generate()
+
             if self.num_tasks == 1:
                 batch = torch.from_numpy(batch)
                 batch_labels = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
             else:
                 batch = torch.from_numpy(batch)
                 batch_labels = torch.from_numpy(batch_labels)
+            # print(batch.shape)
+            # print(batch_labels.shape)
+
         elif params.dataset == "nasdaq":
-            nasdaq100padding = Nasdaq100padding(True, "train", 100, 1)
+            nasdaq100padding = Nasdaq100padding(True, "train", 5, 5)
             data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size,
                                                       shuffle=True)
             batch, batch_labels = next(iter(data_loader))
+            batch = batch.reshape(params.update_batch_size, 5, 1)
+            batch_labels = batch_labels[:, :, 0]
+            # print(batch.shape)
+            # print(batch_labels.shape)
 
         batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
         # print(batch.shape, batch_labels.shape)
@@ -86,8 +93,6 @@ class DKT(nn.Module):
 
             self.model.set_train_data(inputs=z, targets=labels.float())
             predictions = self.model(z)
-            print(predictions.loc.shape)
-            print(self.model.train_targets.shape)
             loss = -self.mll(predictions, self.model.train_targets)
 
             loss.backward()
@@ -101,10 +106,12 @@ class DKT(nn.Module):
                 ))
 
     def test_loop(self, n_support, optimizer=None, params=None):
-        if params is None or params.dataset != "sines":
+        if params is None or params.dataset == "QMUL":
             return self.test_loop_qmul(n_support, optimizer)
         elif params.dataset == "sines":
             return self.test_loop_sines(n_support, params, optimizer)
+        elif params.dataset == "nasdaq":
+            return self.test_loop_nasdaq(n_support, params, optimizer)
         else:
             raise ValueError("unknown dataset")
 
@@ -185,6 +192,47 @@ class DKT(nn.Module):
 
         return mse
 
+    def test_loop_nasdaq(self, n_support, params, optimizer=None):  # no optimizer needed for GP
+        nasdaq100padding = Nasdaq100padding(True, "test", 10, 10)
+        data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size,
+                                                  shuffle=True)
+        batch, batch_labels = next(iter(data_loader))
+        batch = batch.reshape(params.update_batch_size, 10, 1)
+        batch_labels = batch_labels[:, :, 0]
+
+        inputs = batch
+        targets = batch_labels
+
+        support_ind = list(np.random.choice(list(range(10)), replace=False, size=n_support))
+        query_ind = [i for i in range(10) if i not in support_ind]
+
+        x_all = inputs.to(self.device)
+        y_all = targets.to(self.device)
+
+        x_support = inputs[:, support_ind, :].to(self.device).float()
+        y_support = targets[:, support_ind].to(self.device).float()
+        x_query = inputs[:, query_ind, :].float()
+        y_query = targets[:, query_ind].to(self.device).float()
+
+        # choose a random test person
+        n = np.random.randint(0, x_support.shape[0])
+
+        z_support = self.feature_extractor(x_support[n]).detach()
+        self.model.set_train_data(inputs=z_support, targets=y_support[n], strict=False)
+
+        self.model.eval()
+        self.feature_extractor.eval()
+        self.likelihood.eval()
+
+        with torch.no_grad():
+            z_query = self.feature_extractor(x_all[n].float()).detach()
+            pred = self.likelihood(self.model(z_query))
+            lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
+
+        mse = self.mse(pred.mean, y_all[n])
+
+        return mse
+
     def save_checkpoint(self, checkpoint):
         # save state
         gp_state_dict = self.model.state_dict()
@@ -231,7 +279,7 @@ class MultitaskExactGPLayer(gpytorch.models.ExactGP):
     def __init__(self, config, train_x, train_y, likelihood, kernel='nn', num_tasks=2):
         super(MultitaskExactGPLayer, self).__init__(train_x, train_y, likelihood)
         self.mean_module = gpytorch.means.MultitaskMean(
-            gpytorch.means.ConstantMean(), num_tasks=3
+            gpytorch.means.ConstantMean(), num_tasks=num_tasks
         )
         if (kernel == "nn"):
             kernels = []
@@ -241,8 +289,6 @@ class MultitaskExactGPLayer(gpytorch.models.ExactGP):
                                         num_layers=config.nn_config["num_layers"],
                                         hidden_dim=config.nn_config["hidden_dim"]))
             self.covar_module = MultiNNKernel(num_tasks, kernels)
-            print(kernels)
-            print(self.covar_module)
         elif kernel == "rbf":
             self.covar_module = gpytorch.kernels.MultitaskKernel(
                 gpytorch.kernels.RBFKernel(), num_tasks=2, rank=1
@@ -254,5 +300,4 @@ class MultitaskExactGPLayer(gpytorch.models.ExactGP):
     def forward(self, x):
         mean_x = self.mean_module(x)
         covar_x = self.covar_module(x)
-        print(mean_x.shape)
         return gpytorch.distributions.MultitaskMultivariateNormal(mean_x, covar_x)

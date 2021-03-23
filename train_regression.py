@@ -5,10 +5,10 @@ import numpy as np
 import torch
 
 import backbone
+from configs import Config
 from io_utils import parse_args_regression
 from methods.DKT_regression import DKT
 from methods.feature_transfer_regression import FeatureTransfer
-from configs import Config
 
 params = parse_args_regression('train_regression')
 np.random.seed(params.seed)
@@ -29,11 +29,9 @@ logging.info('Device: {}'.format(device))
 if params.dataset == "sines":
     bb = backbone.MLP(input_dim=1, output_dim=params.output_dim).to(device)
 elif params.dataset == "nasdaq":
-    bb = backbone.MLP(input_dim=82, output_dim=82).to(device)
+    bb = backbone.MLP(input_dim=1, output_dim=params.output_dim).to(device)
 else:
     bb = backbone.Conv3().to(device)
-
-
 
 if params.method == 'DKT':
     model = DKT(bb, device, num_tasks=params.output_dim, config=config)

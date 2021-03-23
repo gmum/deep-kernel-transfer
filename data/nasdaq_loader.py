@@ -12,6 +12,7 @@ class Nasdaq100padding(Dataset):
 
     def __init__(self, normalize=None, partition="train", window=10, time_to_predict=10):
         self.df = pd.read_csv("filelists/Nasdaq_100/nasdaq100_padding.csv")
+        # self.df = pd.read_csv("nasdaq100_padding.csv")
         self.partition = partition
         self.window = window
         self.time_to_predict = time_to_predict
@@ -37,9 +38,9 @@ class Nasdaq100padding(Dataset):
         end_of_x = idx + self.window
         end_of_y = idx + self.window + self.time_to_predict
         if self.partition == "train":
-            return self.df_train.loc[begin:end_of_x - 1].values, self.df_train.loc[end_of_x:end_of_y - 1].values
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train.loc[begin:end_of_x - 1].values
         if self.partition == "test":
-            return self.df_test.loc[begin:end_of_x - 1].values, self.df_test.loc[end_of_x:end_of_y - 1].values
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test.loc[begin:end_of_x - 1].values
         else:
             raise NotImplementedError
 
@@ -52,5 +53,5 @@ if __name__ == '__main__':
                                                  batch_size=4, shuffle=True)
 
     x, y = next(iter(dataset_loader))
-    print(x)
-    print(y)
+    print(x.reshape(4,10,1))
+    print(y[:,:,0].shape)
