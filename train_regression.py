@@ -28,6 +28,8 @@ logging.info('Device: {}'.format(device))
 
 if params.dataset == "sines":
     bb = backbone.MLP(input_dim=1, output_dim=params.output_dim).to(device)
+elif params.dataset == "nasdaq":
+    bb = backbone.MLP(input_dim=82, output_dim=82).to(device)
 else:
     bb = backbone.Conv3().to(device)
 

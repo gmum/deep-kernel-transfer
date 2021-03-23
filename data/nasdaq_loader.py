@@ -11,7 +11,7 @@ class Nasdaq100padding(Dataset):
     """Nasdaq100padding dataset."""
 
     def __init__(self, normalize=None, partition="train", window=10, time_to_predict=10):
-        self.df = pd.read_csv("nasdaq100_padding.csv")
+        self.df = pd.read_csv("filelists/Nasdaq_100/nasdaq100_padding.csv")
         self.partition = partition
         self.window = window
         self.time_to_predict = time_to_predict
