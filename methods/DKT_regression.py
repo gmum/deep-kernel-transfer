@@ -193,11 +193,11 @@ class DKT(nn.Module):
         return mse
 
     def test_loop_nasdaq(self, n_support, params, optimizer=None):  # no optimizer needed for GP
-        nasdaq100padding = Nasdaq100padding(True, "test", 10, 10)
+        nasdaq100padding = Nasdaq100padding(True, "test", 100, 100)
         data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size,
                                                   shuffle=True)
         batch, batch_labels = next(iter(data_loader))
-        batch = batch.reshape(params.update_batch_size, 10, 1)
+        batch = batch.reshape(params.update_batch_size, 100, 1)
         batch_labels = batch_labels[:, :, 0]
 
         inputs = batch
