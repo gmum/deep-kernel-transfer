@@ -27,9 +27,13 @@ class DKT(nn.Module):
         # if (train_x is None): train_x = torch.ones(19, 2916).to(self.device)
         # if (train_y is None): train_y = torch.ones(19).to(self.device)
         if self.dataset == "polynomials" and self.context is True:
-            if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
+            # if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
+            # if (train_x is None): train_x = torch.ones(10, 6).to(self.device)
+            # different latent space's dimensionality
+            if (train_x is None): train_x = torch.ones(10, 15).to(self.device)
         else:
-            if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
+            # if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
+            if (train_x is None): train_x = torch.ones(10, 15).to(self.device)
 
         if (train_y is None): train_y = torch.ones(10).to(self.device)
 
@@ -76,10 +80,16 @@ class DKT(nn.Module):
 
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
+            context_to_add = inputs[:, 1:]
             z = self.feature_extractor(inputs)
+
+            z_with_context = torch.cat((z, context_to_add), 1)
+
             #TODO - maybe self.model.set_train_data(inputs=z, targets=labels, strict=False)
-            self.model.set_train_data(inputs=z, targets=labels)
-            predictions = self.model(z)
+            # self.model.set_train_data(inputs=z, targets=labels)
+            # predictions = self.model(z)
+            self.model.set_train_data(inputs=z_with_context, targets=labels)
+            predictions = self.model(z_with_context)
             loss = -self.mll(predictions, self.model.train_targets)
 
             loss.backward()
@@ -158,7 +168,11 @@ class DKT(nn.Module):
         n = np.random.randint(0, x_support.shape[0])
 
         z_support = self.feature_extractor(x_support[n]).detach()
-        self.model.set_train_data(inputs=z_support, targets=y_support[n], strict=False)
+        context_to_add = x_support[n][:, 1:]
+        # print(x_support[n][:, 1:])
+        z_support_with_context = torch.cat((z_support, context_to_add), 1)
+        # self.model.set_train_data(inputs=z_support, targets=y_support[n], strict=False)
+        self.model.set_train_data(inputs=z_support_with_context, targets=y_support[n], strict=False)
 
         self.model.eval()
         self.feature_extractor.eval()
@@ -166,7 +180,10 @@ class DKT(nn.Module):
 
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
-            pred = self.likelihood(self.model(z_query))
+            context_to_add_all = x_all[n][:, 1:]
+            z_query_with_context = torch.cat((z_query, context_to_add_all), 1)
+            # pred = self.likelihood(self.model(z_query))
+            pred = self.likelihood(self.model(z_query_with_context))
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 
         mse = self.mse(pred.mean, y_all[n])
@@ -238,10 +255,14 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         elif (kernel == 'spectral'):
             # self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=2916)
             # self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=1)
-            self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=100, ard_num_dims=1)
+            self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=100, ard_num_dims=10)
+            # self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=100, ard_num_dims=6)
         elif (kernel == "nn"):
             # kernel = NNKernel(input_dim=2916, output_dim=16, num_layers=1, hidden_dim=16)
-            kernel = NNKernel(input_dim=1, output_dim=1, num_layers=2, hidden_dim=16)
+            # kernel = NNKernel(input_dim=1, output_dim=1, num_layers=2, hidden_dim=16)
+            kernel = NNKernel(input_dim=15, output_dim=1, num_layers=2, hidden_dim=16)
+            # kernel = NNKernel(input_dim=15, output_dim=1, num_layers=4, hidden_dim=40)
+            # kernel = NNKernel(input_dim=6, output_dim=1, num_layers=4, hidden_dim=40)
             self.covar_module = kernel
         else:
             raise ValueError(
