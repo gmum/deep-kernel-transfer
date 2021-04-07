@@ -44,7 +44,8 @@ def parse_args(script):
                         help='number of labeled data in each class, same as n_support')  # baseline and baseline++ only use this parameter in finetuning
     parser.add_argument('--train_aug', action='store_true',
                         help='perform data augmentation or not during training ')  # still required for save_features.py and test.py to find the model path correctly
-    parser.add_argument('--kernel-type', type=str, default='rbf', choices=['rbf','bncossim', 'matern','poli1','poli2','cossim','nn'])
+    parser.add_argument('--kernel-type', type=str, default='rbf',
+                        choices=['rbf', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])
     parser.add_argument('--save_dir', type=str, default='./save/classification')
     if script == 'train':
         parser.add_argument('--num_classes', default=200, type=int,
@@ -83,15 +84,18 @@ def parse_args_regression(script):
     parser.add_argument('--method', default='DKT', help='DKT / transfer')
     parser.add_argument('--dataset', default='QMUL', help='QMUL / sines')
     parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
-    parser.add_argument('--update_batch_size', default=5, type=int,
+    parser.add_argument('--update_batch_size', default=32, type=int,
                         help='Number of examples used for inner gradient update (K for K-shot learning).')
-    parser.add_argument('--meta_batch_size', default=5, type=int, help='Number of tasks sampled per meta-update')
+    parser.add_argument('--meta_batch_size', default=32, type=int, help='Number of tasks sampled per meta-update')
     parser.add_argument('--output_dim', default=1, type=int, help='Input/output dim for generated dataset')
     parser.add_argument('--multidimensional_amp', default=False, type=str2bool,
                         help='Different amplitudes per each example')
-    parser.add_argument('--multidimensional_phase', default=False, type=str2bool,
+    parser.add_argument('--multidimensional_phase', default=True, type=str2bool,
                         help='Different phases per each example')
-    parser.add_argument('--kernel_type', type=str, default='rbf', choices=['rbf','bncossim', 'matern','poli1','poli2','cossim','nn'])
+    parser.add_argument('--noise', default=False, type=str2bool,
+                        help='Different phases per each example')
+    parser.add_argument('--kernel_type', type=str, default='rbf',
+                        choices=['rbf', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])
     parser.add_argument('--save_dir', type=str, default='./save/regression')
     if script == 'train_regression':
         parser.add_argument('--start_epoch', default=0, type=int, help='Starting epoch')

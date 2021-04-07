@@ -32,8 +32,8 @@ class DKT(nn.Module):
             if (train_x is None): train_x = torch.ones(10, 1).to(self.device)
             if (train_y is None): train_y = torch.ones(10).to(self.device)
         else:
-            if (train_x is None): train_x = torch.ones(10, self.num_tasks).to(self.device)
-            if (train_y is None): train_y = torch.ones(10, self.num_tasks).to(self.device)
+            if (train_x is None): train_x = torch.ones(64, self.num_tasks).to(self.device)
+            if (train_y is None): train_y = torch.ones(64, self.num_tasks).to(self.device)
 
 
         if self.num_tasks==1:
@@ -67,7 +67,8 @@ class DKT(nn.Module):
                                                                       params.meta_batch_size,
                                                                       params.output_dim,
                                                                       params.multidimensional_amp,
-                                                                      params.multidimensional_phase).generate()
+                                                                      params.multidimensional_phase,
+                                                                      params.noise).generate()
 
             if self.num_tasks == 1:
                 batch = torch.from_numpy(batch)
@@ -143,7 +144,8 @@ class DKT(nn.Module):
                                                                       params.meta_batch_size,
                                                                       params.output_dim,
                                                                       params.multidimensional_amp,
-                                                                      params.multidimensional_phase).generate()
+                                                                      params.multidimensional_phase,
+                                                                      params.noise).generate()
 
         if self.num_tasks == 1:
             inputs = torch.from_numpy(batch)

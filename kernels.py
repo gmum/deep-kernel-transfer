@@ -7,17 +7,17 @@ import gpytorch
 class NNKernel(gpytorch.kernels.Kernel):
     def __init__(self, input_dim, output_dim, num_layers, hidden_dim, flatten=False, **kwargs):
         super(NNKernel, self).__init__(**kwargs)
-    
-      
+
+
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
         self.flatten = flatten
         self.model = self.create_model()
-    
-    
-    
+
+
+
     def create_model(self):
 
         assert self.num_layers>=1, "Number of hidden layers must be at least 1"
@@ -28,10 +28,10 @@ class NNKernel(gpytorch.kernels.Kernel):
             modules.append(nn.Linear(self.hidden_dim, self.hidden_dim))
             modules.append(nn.ReLU())
         modules.append(nn.Linear(self.hidden_dim, self.output_dim))
-        
+
         model = nn.Sequential(*modules)
         return model
-    
+
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, full_covar=True, **params):
             r"""
             Computes the covariance between x1 and x2.
@@ -60,35 +60,36 @@ class NNKernel(gpytorch.kernels.Kernel):
             if last_dim_is_batch:
                 raise NotImplementedError()
             else:
-                
-                z1 = self.model(x1)
-                z2 = self.model(x2)
-                
-                out = torch.matmul(z1, z2.T)
-      
-                
+
+                X = torch.cat((x1, x2), 0)
+                D = X.shape[-1]
+                mean = torch.mean(X, dim=-1).unsqueeze(-1)
+                X = X - mean
+                out = 1 / (D - 1) * X @ X.transpose(-1, -2)
+
+
                 if diag:
                     return torch.diag(out)
                 else:
-                    return out 
-                
+                    return out
 
-                
+
+
 class MultiNNKernel(gpytorch.kernels.Kernel):
     def __init__(self, num_tasks, kernels, **kwargs):
         super(MultiNNKernel, self).__init__(**kwargs)
         assert isinstance(kernels, list), "kernels must be a list of kernels"
         self.num_tasks = num_tasks
         self.kernels = nn.ModuleList(kernels)
-        
+
 
     def num_outputs_per_input(self, x1, x2):
         """
         Given `n` data points `x1` and `m` datapoints `x2`, this multitask
         kernel returns an `(n*num_tasks) x (m*num_tasks)` covariance matrix.
         """
-        return self.num_tasks        
-    
+        return self.num_tasks
+
     def forward(self, x1, x2, diag=False, last_dim_is_batch=False, full_covar=True, **params):
             r"""
             Computes the covariance between x1 and x2.
@@ -117,20 +118,27 @@ class MultiNNKernel(gpytorch.kernels.Kernel):
             if last_dim_is_batch:
                 raise NotImplementedError()
             else:
-                n = x1.shape[0]
-                m = x2.shape[0]
-                out = torch.zeros((n*self.num_tasks, m*self.num_tasks), device=x1.get_device())
-                for i in range(self.num_tasks):
-                    for j in range(self.num_tasks):
-                        #print(x1.shape, x2.shape)
-                        z1 = self.kernels[i].model(x1)
-                        z2 = self.kernels[j].model(x2)
+                X = torch.cat((x1, x2), 0)
+                D = X.shape[-1]
+                mean = torch.mean(X, dim=-1).unsqueeze(-1)
+                X = X - mean
+                out = 1 / (D - 1) * X @ X.transpose(-1, -2)
 
-                        #print(z1.shape, z2.shape)
-                        #print((i*n), n, (j*m), m)
-                        out[(i*n):(i+1)*n, (j*m):(j+1)*m] = torch.matmul(z1, z2.T)       
+                # n = x1.shape[0]
+                # m = x2.shape[0]
+                # # out = torch.zeros((n*self.num_tasks, m*self.num_tasks), device=x1.get_device())
+                # out = torch.zeros((n*self.num_tasks, m*self.num_tasks))
+                # for i in range(self.num_tasks):
+                #     for j in range(self.num_tasks):
+                #         #print(x1.shape, x2.shape)
+                #         z1 = self.kernels[i].model(x1)
+                #         z2 = self.kernels[j].model(x2)
+                #
+                #         #print(z1.shape, z2.shape)
+                #         #print((i*n), n, (j*m), m)
+                #         out[(i*n):(i+1)*n, (j*m):(j+1)*m] = torch.matmul(z1, z2.T)
 
                 if diag:
                     return torch.diag(out)
                 else:
-                    return out     
+                    return out
