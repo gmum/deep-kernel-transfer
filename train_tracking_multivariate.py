@@ -51,15 +51,15 @@ for epoch in range(params.stop_epoch):
         if bidx < 150000:
             model.model.train()
             model.feature_extractor.train()
-            #try:
-            model.optimize_step(epoch, bidx, optimizer, data)
-            if bidx % 100 == 0:
-                test_example, pred = model.test_loop(data)
-                if test_example is not None:
-                    for k in range(5):
-                        print(test_example[k]*0.3048)
-            # except:
-            #     print("Matrix problem: ")
+            try:
+                model.optimize_step(epoch, bidx, optimizer, data)
+                if bidx % 100 == 0:
+                    test_example, pred = model.test_loop(data)
+                    if test_example is not None:
+                        for k in range(5):
+                            print(test_example[k]*0.3048)
+            except:
+                print("Matrix problem: ")
         else:
             break
 

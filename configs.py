@@ -1,6 +1,9 @@
-#save_dir                    = './save/regression_QUML_nn'
-save_dir                    = './save/regression_multivariate_c'
+save_dir                    = './save/regression_QUML_nn_flow_new'
+#save_dir #                    = './save/regression_multivariate'
+
+#save_dir                    = './save/regression_QUML_nn_Cflownew'
 data_dir = {}
+#save_dir                    = './save/regression_QUML_nn'
 data_dir['CUB']             = './filelists/CUB/'
 data_dir['miniImagenet']    = './filelists/miniImagenet/'
 data_dir['omniglot']        = './filelists/omniglot/'

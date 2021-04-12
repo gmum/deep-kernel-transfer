@@ -59,18 +59,21 @@ test_loader = torch.utils.data.DataLoader(data, batch_size=params.batch_size,
 model.model.eval()
 model.feature_extractor.eval()
 mses = []
-plotting = False
+plotting = True
 for k in range(5):
     mses.append([])
 for bidx, data in enumerate(test_loader):
-    if bidx < 10000:
-        test_example, pred = model.test_loop(data)
-        if test_example is not None:
-            for k in range(5):
-                mses[k].append(test_example[k])
-            if plotting:
-                hist, nbrs, mask, _, _, fut, op_mask = data
-                draw_ngsim_plots(hist, fut, pred, bidx, save_dir)
+    if bidx < 100:
+        try:
+            test_example, pred = model.test_loop(data)
+            if test_example is not None:
+                for k in range(5):
+                    mses[k].append(test_example[k])
+                if plotting:
+                    hist, nbrs, mask, _, _, fut, op_mask = data
+                    draw_ngsim_plots(hist, fut, pred, bidx, save_dir)
+        except:
+            print("Matrix problem: ")
     else:
         break
 

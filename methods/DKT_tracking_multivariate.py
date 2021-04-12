@@ -46,8 +46,8 @@ class DKT(nn.Module):
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
 
-        if (train_x is None): train_x = torch.ones(16, 256).to(self.device)
-        if (train_y is None): train_y = torch.ones(16, 2).to(self.device)
+        if (train_x is None): train_x = torch.ones(41, 256).to(self.device)
+        if (train_y is None): train_y = torch.ones(41, 2).to(self.device)
 
         likelihood = gpytorch.likelihoods.MultitaskGaussianLikelihood(num_tasks=2)
         model = ExactGPLayer(train_x=train_x, train_y=train_y, likelihood=likelihood, kernel=kernel_type)
@@ -80,13 +80,18 @@ class DKT(nn.Module):
             labels = hist[:, 0, :]
             labelsf = fut[:, 0, :]
             labels = torch.cat((labels, labelsf), axis=0)
-            perm = torch.randperm(x.size(0))[:16]
-            x = x[perm]
-            labels = labels[perm]
+            # perm = torch.randperm(x.size(0))#[:16]
+            # x = x[perm]
+            # labels = labels[perm]
             z = self.feature_extractor(hist, nbrs, mask, x)
-            self.model.set_train_data(inputs=z, targets=labels)
+            z = z + 0.01 * torch.randn(z.size()).cuda()
+            labels = labels + 0.01 * torch.randn(labels.size()).cuda()
+            self.model.set_train_data(inputs=z, targets=labels, strict=False)
             predictions = self.model(z)
-            loss = -self.mll(predictions, self.model.train_targets)
+            try:
+                loss = -self.mll(predictions, self.model.train_targets)
+            except:
+                loss = self.mse(predictions.mean, labels)
             loss.backward()
             optimizer.step()
             mse = self.mse(predictions.mean, labels)
