@@ -10,7 +10,7 @@ import os
 import glob
 import time
 
-import configs
+# import configs
 import backbone
 import data.feature_loader as feat_loader
 from data.datamgr import SetDataManager
@@ -22,6 +22,8 @@ from methods.matchingnet import MatchingNet
 from methods.relationnet import RelationNet
 from methods.maml import MAML
 from io_utils import model_dict, get_resume_file, parse_args, get_best_file , get_assigned_file
+from configs import Config
+
 
 def _set_seed(seed, verbose=True):
     if(seed!=0):
@@ -60,6 +62,7 @@ def feature_evaluation(cl_data_file, model, n_way = 5, n_support = 5, n_query = 
 
 
 def single_test(params):
+    configs = Config(params)
     acc_all = []
 
     iter_num = 600
@@ -77,7 +80,7 @@ def single_test(params):
     elif params.method == 'protonet':
         model           = ProtoNet( model_dict[params.model], **few_shot_params )
     elif params.method == 'DKT':
-        model           = DKT(model_dict[params.model], **few_shot_params)
+        model           = DKT(model_dict[params.model], **few_shot_params, config=configs)
     elif params.method == 'matchingnet':
         model           = MatchingNet( model_dict[params.model], **few_shot_params )
     elif params.method in ['relationnet', 'relationnet_softmax']:

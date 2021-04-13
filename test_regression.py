@@ -27,7 +27,10 @@ params.checkpoint_dir = '%scheckpoints/%s/%s_%s' % (config.save_dir, params.data
 
 
 if params.dataset == "sines":
-    bb = backbone.MLP(input_dim=1, output_dim=params.output_dim).to(device)
+    if params.context:
+        bb = backbone.MLP(input_dim=11, output_dim=params.output_dim).to(device)
+    else:
+        bb = backbone.MLP(input_dim=1, output_dim=params.output_dim).to(device)
 else:
     bb = backbone.Conv3().to(device)
 

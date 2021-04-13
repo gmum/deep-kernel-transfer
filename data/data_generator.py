@@ -11,7 +11,7 @@ class SinusoidalDataGenerator(object):
     A "class" is considered a particular sinusoid function.
     """
 
-    def __init__(self, num_samples_per_class, batch_size, output_dim=1, multidimensional_amp=False,
+    def __init__(self, num_samples_per_class, batch_size, output_dim=1, context=False, multidimensional_amp=False,
                  multidimensional_phase=True):
         """
         Args:
@@ -21,6 +21,10 @@ class SinusoidalDataGenerator(object):
         self.batch_size = batch_size
         self.num_samples_per_class = num_samples_per_class
         self.num_classes = 1  # by default 1 (only relevant for classification problems)
+
+        self.context = context
+
+        self.n_support = 5
 
         self.generate = self.generate_sinusoid_batch
         self.amp_range = [0.1, 5.0]
@@ -58,6 +62,10 @@ class SinusoidalDataGenerator(object):
 
         outputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
         init_inputs = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_input])
+        # if self.context:
+            # context_inputs = np.zeros([self.batch_size, self.n_support, self.dim_input])
+            # context_outputs = np.zeros([self.batch_size, self.n_support, self.dim_output])
+            # context = np.zeros([self.batch_size, self.n_support * (self.dim_input + self.dim_output)])
         for func in range(self.batch_size):
             init_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1],
                                                   [self.num_samples_per_class, self.dim_input])
@@ -65,4 +73,33 @@ class SinusoidalDataGenerator(object):
                 init_inputs[:, input_idx:, 0] = np.linspace(self.input_range[0], self.input_range[1],
                                                             num=self.num_samples_per_class - input_idx, retstep=False)
             outputs[func] = amp[func] * np.sin(init_inputs[func] - phase[func])
+        if self.context:
+            support_ind = list(np.random.choice(list(range(self.num_samples_per_class)), replace=False, size=self.n_support))
+            context_inputs = init_inputs[:, support_ind, :].reshape(self.batch_size, self.n_support)
+            context_outputs = outputs[:, support_ind, :].reshape(self.batch_size, self.n_support)
+            context = np.concatenate((context_inputs, context_outputs), axis=1)
+            # context = None
+            # context_inputs[func] = np.random.uniform(self.input_range[0], self.input_range[1],
+            #                                          [self.n_support, self.dim_input])
+            # context_outputs[func] = amp[func] * np.sin(context_inputs[func] - phase[func])
+            # context[func] = np.concatenate((context_inputs[func], context_outputs[func]), axis=-1).reshape(self.n_support * (self.dim_input + self.dim_output))
+            return init_inputs.astype(np.float32), outputs.astype(np.float32), amp.astype(np.float32), phase.astype(np.float32), context.astype(np.float32)
+
         return init_inputs.astype(np.float32), outputs.astype(np.float32), amp.astype(np.float32), phase.astype(np.float32)
+
+
+# if __name__ == '__main__':
+#     num_samples_per_class = 10
+#     batch_size = 5
+#     sines_generator = SinusoidalDataGenerator(batch_size*2, batch_size, output_dim=1, context=True, multidimensional_amp=False, multidimensional_phase=False)
+#     batch, batch_labels, amp, phase, context = sines_generator.generate()
+    # print(batch)
+    # print(batch_labels)
+    # print(amp)
+    # print(phase)
+    # print(context)
+    # print(batch.shape)
+    # print(batch_labels.shape)
+    # print(amp.shape)
+    # print(phase.shape)
+    # print(context.shape)

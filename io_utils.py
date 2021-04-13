@@ -87,6 +87,7 @@ def parse_args_regression(script):
                         help='Number of examples used for inner gradient update (K for K-shot learning).')
     parser.add_argument('--meta_batch_size', default=5, type=int, help='Number of tasks sampled per meta-update')
     parser.add_argument('--output_dim', default=1, type=int, help='Input/output dim for generated dataset')
+    parser.add_argument('--context', action='store_true', help='Adding context to regression task')
     parser.add_argument('--multidimensional_amp', default=False, type=str2bool,
                         help='Different amplitudes per each example')
     parser.add_argument('--multidimensional_phase', default=False, type=str2bool,

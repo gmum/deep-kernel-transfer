@@ -9,7 +9,7 @@ import time
 import os
 import glob
 
-import configs
+# import configs
 import backbone
 from data.datamgr import SimpleDataManager, SetDataManager
 from methods.baselinetrain import BaselineTrain
@@ -20,6 +20,7 @@ from methods.matchingnet import MatchingNet
 from methods.relationnet import RelationNet
 from methods.maml import MAML
 from io_utils import model_dict, parse_args, get_resume_file
+from configs import Config
 
 def _set_seed(seed, verbose=True):
     if(seed!=0):
@@ -70,6 +71,7 @@ def train(base_loader, val_loader, model, optimization, start_epoch, stop_epoch,
 if __name__ == '__main__':
     params = parse_args('train')
     _set_seed(parse_args('train').seed)
+    configs = Config(params)
     if params.dataset == 'cross':
         base_file = configs.data_dir['miniImagenet'] + 'all.json'
         val_file = configs.data_dir['CUB'] + 'val.json'
@@ -142,7 +144,7 @@ if __name__ == '__main__':
         # a batch for SetDataManager: a [n_way, n_support + n_query, dim, w, h] tensor
 
         if(params.method == 'DKT'):
-            model = DKT(model_dict[params.model], **train_few_shot_params)
+            model = DKT(model_dict[params.model], **train_few_shot_params, config=configs)
             model.init_summary()
         elif params.method == 'protonet':
             model = ProtoNet(model_dict[params.model], **train_few_shot_params)
