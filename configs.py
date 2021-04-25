@@ -4,6 +4,7 @@ class Config:
     def __init__(self, args):
         self.kernel_type = args.kernel_type #spectral' #'bncossim' #linear, rbf, spectral (regression only), matern, poli1, poli2, cossim, bncossim
         self.data_dir={}
+        self.data_dir['CUB'] = './filelists/CUB/'
         self.data_dir['miniImagenet'] = './filelists/miniImagenet/'
         self.data_dir['omniglot'] = './filelists/omniglot/'
         self.data_dir['emnist'] = './filelists/emnist/'
@@ -15,8 +16,10 @@ class Config:
                 self.nn_config["input_dim"] = args.output_dim
             elif args.dataset == "QMUL":
                 self.nn_config["input_dim"] = 2916
-            elif args.dataset == "CUB":
+            elif args.dataset in ["CUB", "miniImagenet", "cross"]:
                 self.nn_config["input_dim"] = 1600
+            elif args.dataset == "cross_char":
+                self.nn_config["input_dim"] = 64
             else:
                 raise ValueError("input dim for nn kernel not known for value {}".format(args.dataset))
             self.nn_config["hidden_dim"] = 16

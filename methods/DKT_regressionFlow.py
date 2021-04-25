@@ -150,6 +150,7 @@ class DKT(nn.Module):
             raise ValueError("unknown dataset")
     
     def test_loop_qmul(self, n_support):  # no optimizer needed for GP
+        self.cnf.eval()
         inputs, targets = get_batch(test_people)
         sample_fn, _ = get_transforms(self.cnf, self.use_conditional)
         support_ind = list(np.random.choice(list(range(19)), replace=False, size=n_support))
@@ -182,6 +183,7 @@ class DKT(nn.Module):
         self.model.eval()
         self.feature_extractor.eval()
         self.likelihood.eval()
+        self.cnf.eval()
 
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
@@ -206,6 +208,7 @@ class DKT(nn.Module):
 
 
     def test_loop_sines(self, n_support, params):  # no optimizer needed for GP
+        self.cnf.eval()
         batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
                                                                       params.meta_batch_size,
                                                                       params.output_dim,

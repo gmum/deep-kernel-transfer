@@ -16,12 +16,19 @@ from data.datamgr import SetDataManager
 from methods.baselinetrain import BaselineTrain
 from methods.baselinefinetune import BaselineFinetune
 from methods.protonet import ProtoNet
-from methods.DKT import DKT
+from methods.DKT_flow import DKT
 from methods.matchingnet import MatchingNet
 from methods.relationnet import RelationNet
 from methods.maml import MAML
-from io_utils import model_dict, get_resume_file, parse_args, get_best_file , get_assigned_file
+from io_utils import model_dict, get_resume_file, parse_args_flow, get_best_file , get_assigned_file
 from configs import Config
+
+from train_misc import set_cnf_options
+from train_misc import add_spectral_norm
+from train_misc import create_regularization_fns
+from train_misc import build_model_tabular, build_conditional_cnf
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def _set_seed(seed, verbose=True):
     if(seed!=0):
@@ -78,7 +85,14 @@ def single_test(params):
     elif params.method == 'protonet':
         model           = ProtoNet( model_dict[params.model], **few_shot_params )
     elif params.method == 'DKT':
-        model           = DKT(model_dict[params.model], **few_shot_params, config=configs)
+        if params.use_conditional:
+            cnf = build_conditional_cnf(params, 1, params.context_dim).cuda()
+        else:
+            regularization_fns, regularization_coeffs = create_regularization_fns(params)
+            cnf = build_model_tabular(params, 1, regularization_fns).cuda()
+        if params.spectral_norm: add_spectral_norm(cnf)
+        set_cnf_options(params, cnf)
+        model           = DKT(model_dict[params.model], **few_shot_params, cnf=cnf, use_conditional=params.use_conditional, config=configs)
     elif params.method == 'matchingnet':
         model           = MatchingNet( model_dict[params.model], **few_shot_params )
     elif params.method in ['relationnet', 'relationnet_softmax']:
@@ -159,7 +173,10 @@ def single_test(params):
         if params.adaptation:
             model.task_update_num = 100 #We perform adaptation on MAML simply by updating more times.
         model.eval()
-        acc_mean, acc_std = model.test_loop( novel_loader, return_std = True)
+        if params.method == 'DKT':
+            acc_mean, acc_std, NLL_mean, NLL_std = model.test_loop( novel_loader, return_std = True)
+        else:
+            acc_mean, acc_std = model.test_loop( novel_loader, return_std = True)
 
     else:
         novel_file = os.path.join( checkpoint_dir.replace("checkpoints","features"), split_str +".hdf5") #defaut split = novel, but you can also test base or val classes
@@ -181,22 +198,37 @@ def single_test(params):
             exp_setting = '%s-%s-%s-%s%s %sshot %sway_test' %(params.dataset, split_str, params.model, params.method, aug_str, params.n_shot, params.test_n_way )
         else:
             exp_setting = '%s-%s-%s-%s%s %sshot %sway_train %sway_test' %(params.dataset, split_str, params.model, params.method, aug_str , params.n_shot , params.train_n_way, params.test_n_way )
-        acc_str = '%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num, acc_mean, 1.96* acc_std/np.sqrt(iter_num))
-        f.write( 'Time: %s, Setting: %s, Acc: %s \n' %(timestamp,exp_setting,acc_str)  )
+        if params.method == 'DKT':
+            acc_str = '%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num, acc_mean, 1.96* acc_std/np.sqrt(iter_num))
+            nll_str = '%d Test NLL = %4.2f +- %4.2f' %(iter_num, NLL_mean, 1.96* NLL_std/np.sqrt(iter_num))
+            f.write( 'Time: %s, Setting: %s, Acc: %s, NLL: %s \n' %(timestamp,exp_setting,acc_str,nll_str)  )
+        else:
+            acc_str = '%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num, acc_mean, 1.96* acc_std/np.sqrt(iter_num))
+            f.write( 'Time: %s, Setting: %s, Acc: %s \n' %(timestamp,exp_setting,acc_str)  )
+    if params.method == 'DKT':
+        return acc_mean, NLL_mean
     return acc_mean
 
 def main():        
-    params = parse_args('test')
+    params = parse_args_flow('test')
     seed = params.seed
     repeat = params.repeat
     #repeat the test N times changing the seed in range [seed, seed+repeat]
     accuracy_list = list()
+    nll_list = list()
     for i in range(seed, seed+repeat):
         if(seed!=0): _set_seed(i)
         else: _set_seed(0)
-        accuracy_list.append(single_test(parse_args('test')))
+        if params.method == 'DKT':
+            acc, nll = single_test(parse_args_flow('test'))
+            accuracy_list.append(acc)
+            nll_list.append(nll)
+        else:
+            accuracy_list.append(single_test(parse_args_flow('test')))
     print("-----------------------------")
     print('Seeds = %d | Overall Test Acc = %4.2f%% +- %4.2f%%' %(repeat, np.mean(accuracy_list), np.std(accuracy_list)))
+    if params.method == 'DKT':
+        print('Seeds = %d | Overall Test NLL = %4.2f +- %4.2f' %(repeat, np.mean(nll_list), np.std(nll_list)))
     print("-----------------------------")        
 if __name__ == '__main__':
     main()

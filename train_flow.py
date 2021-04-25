@@ -13,13 +13,20 @@ import backbone
 from data.datamgr import SimpleDataManager, SetDataManager
 from methods.baselinetrain import BaselineTrain
 from methods.baselinefinetune import BaselineFinetune
-from methods.DKT import DKT
+from methods.DKT_flow import DKT
 from methods.protonet import ProtoNet
 from methods.matchingnet import MatchingNet
 from methods.relationnet import RelationNet
 from methods.maml import MAML
-from io_utils import model_dict, parse_args, get_resume_file
+from io_utils import model_dict, parse_args_flow, get_resume_file
 from configs import Config
+
+from train_misc import set_cnf_options
+from train_misc import add_spectral_norm
+from train_misc import create_regularization_fns
+from train_misc import build_model_tabular, build_conditional_cnf
+
+# os.environ["CUDA_VISIBLE_DEVICES"] = "1"
 
 def _set_seed(seed, verbose=True):
     if(seed!=0):
@@ -53,7 +60,8 @@ def train(base_loader, val_loader, model, optimization, start_epoch, stop_epoch,
         if not os.path.isdir(params.checkpoint_dir):
             os.makedirs(params.checkpoint_dir)
 
-        acc = model.test_loop(val_loader)
+        #TODO - maybe add nll to checking for the best model?
+        acc, nll = model.test_loop(val_loader)
         if acc > max_acc:  # for baseline and baseline++, we don't use validation here so we let acc = -1
             print("--> Best model! save...")
             max_acc = acc
@@ -68,8 +76,8 @@ def train(base_loader, val_loader, model, optimization, start_epoch, stop_epoch,
 
 
 if __name__ == '__main__':
-    params = parse_args('train')
-    _set_seed(parse_args('train').seed)
+    params = parse_args_flow('train')
+    _set_seed(parse_args_flow('train').seed)
     configs = Config(params)
     if params.dataset == 'cross':
         base_file = configs.data_dir['miniImagenet'] + 'all.json'
@@ -143,7 +151,14 @@ if __name__ == '__main__':
         # a batch for SetDataManager: a [n_way, n_support + n_query, dim, w, h] tensor
 
         if(params.method == 'DKT'):
-            model = DKT(model_dict[params.model], **train_few_shot_params, config=configs)
+            if params.use_conditional:
+                cnf = build_conditional_cnf(params, 1, params.context_dim).cuda()
+            else:
+                regularization_fns, regularization_coeffs = create_regularization_fns(params)
+                cnf = build_model_tabular(params, 1, regularization_fns).cuda()
+            if params.spectral_norm: add_spectral_norm(cnf)
+            set_cnf_options(params, cnf)
+            model = DKT(model_dict[params.model], **train_few_shot_params, cnf=cnf, use_conditional=params.use_conditional, config=configs)
             model.init_summary()
         elif params.method == 'protonet':
             model = ProtoNet(model_dict[params.model], **train_few_shot_params)

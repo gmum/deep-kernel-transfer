@@ -80,6 +80,97 @@ def parse_args(script):
     return parser.parse_args()
 
 
+def parse_args_flow(script):
+    parser = argparse.ArgumentParser(description='few-shot script %s' % (script))
+    parser.add_argument('--seed', default=0, type=int, help='Seed for Numpy and pyTorch. Default: 0 (None)')
+    parser.add_argument('--dataset', default='CUB', help='CUB/miniImagenet/cross/omniglot/cross_char')
+    parser.add_argument('--model', default='Conv4',
+                        help='model: Conv{4|6} / ResNet{10|18|34|50|101}')  # 50 and 101 are not used in the paper
+    parser.add_argument('--method', default='baseline',
+                        help='baseline/baseline++/protonet/matchingnet/relationnet{_softmax}/maml{_approx}')  # relationnet_softmax replace L2 norm with softmax to expedite training, maml_approx use first-order approximation in the gradient for efficiency
+    parser.add_argument('--train_n_way', default=5, type=int,
+                        help='class num to classify for training')  # baseline and baseline++ would ignore this parameter
+    parser.add_argument('--test_n_way', default=5, type=int,
+                        help='class num to classify for testing (validation) ')  # baseline and baseline++ only use this parameter in finetuning
+    parser.add_argument('--n_shot', default=5, type=int,
+                        help='number of labeled data in each class, same as n_support')  # baseline and baseline++ only use this parameter in finetuning
+    parser.add_argument('--train_aug', action='store_true',
+                        help='perform data augmentation or not during training ')  # still required for save_features.py and test.py to find the model path correctly
+    parser.add_argument('--kernel-type', type=str, default='rbf', choices=['rbf','bncossim', 'matern','poli1','poli2','cossim','nn'])
+    parser.add_argument('--save_dir', type=str, default='./save/classification')
+
+    parser.add_argument("--use_conditional",  default=False, type=str2bool,
+                        help='If CNF should be conditional')
+
+    parser.add_argument("--context_dim", type=int, default=16, help='Dimensionality of the context.')
+
+    parser.add_argument(
+        "--layer_type", type=str, default="concatsquash",
+        choices=["ignore", "concat", "concat_v2", "squash", "concatsquash", "concatcoord", "hyper", "blend"]
+    )
+    parser.add_argument('--dims', type=str, default='32-32')
+    parser.add_argument("--num_blocks", type=int, default=2, help='Number of stacked CNFs.')
+    parser.add_argument('--time_length', type=float, default=0.5)
+    parser.add_argument('--train_T', type=eval, default=False)
+    parser.add_argument("--divergence_fn", type=str, default="brute_force", choices=["brute_force", "approximate"])
+    parser.add_argument("--nonlinearity", type=str, default="tanh", choices=NONLINEARITIES)
+
+    parser.add_argument('--solver', type=str, default='dopri5', choices=SOLVERS)
+    parser.add_argument('--atol', type=float, default=1e-5)
+    parser.add_argument('--rtol', type=float, default=1e-5)
+    parser.add_argument("--step_size", type=float, default=None, help="Optional fixed step size.")
+
+    parser.add_argument('--test_solver', type=str, default=None, choices=SOLVERS + [None])
+    parser.add_argument('--test_atol', type=float, default=None)
+    parser.add_argument('--test_rtol', type=float, default=None)
+
+    parser.add_argument('--residual', type=eval, default=False, choices=[True, False])
+    parser.add_argument('--rademacher', type=eval, default=False, choices=[True, False])
+    parser.add_argument('--spectral_norm', type=eval, default=False, choices=[True, False])
+    parser.add_argument('--batch_norm', type=eval, default=False, choices=[True, False])
+    parser.add_argument('--bn_lag', type=float, default=0)
+
+    parser.add_argument('--lr', type=float, default=1e-3)
+    parser.add_argument('--weight_decay', type=float, default=1e-5)
+
+    # Track quantities
+    parser.add_argument('--l1int', type=float, default=None, help="int_t ||f||_1")
+    parser.add_argument('--l2int', type=float, default=None, help="int_t ||f||_2")
+    parser.add_argument('--dl2int', type=float, default=None, help="int_t ||f^T df/dt||_2")
+    parser.add_argument('--JFrobint', type=float, default=None, help="int_t ||df/dx||_F")
+    parser.add_argument('--JdiagFrobint', type=float, default=None, help="int_t ||df_i/dx_i||_F")
+    parser.add_argument('--JoffdiagFrobint', type=float, default=None, help="int_t ||df/dx - df_i/dx_i||_F")
+
+    if script == 'train':
+        parser.add_argument('--num_classes', default=200, type=int,
+                            help='total number of classes in softmax, only used in baseline')  # make it larger than the maximum label value in base class
+        parser.add_argument('--save_freq', default=50, type=int, help='Save frequency')
+        parser.add_argument('--start_epoch', default=0, type=int, help='Starting epoch')
+        parser.add_argument('--stop_epoch', default=-1, type=int,
+                            help='Stopping epoch')  # for meta-learning methods, each epoch contains 100 episodes. The default epoch number is dataset dependent. See train.py
+        parser.add_argument('--resume', action='store_true',
+                            help='continue from previous trained model with largest epoch')
+        parser.add_argument('--warmup', action='store_true',
+                            help='continue from baseline, neglected if resume is true')  # never used in the paper
+    elif script == 'save_features':
+        parser.add_argument('--split', default='novel',
+                            help='base/val/novel')  # default novel, but you can also test base/val class accuracy if you want
+        parser.add_argument('--save_iter', default=-1, type=int,
+                            help='save feature from the model trained in x epoch, use the best model if x is -1')
+    elif script == 'test':
+        parser.add_argument('--split', default='novel',
+                            help='base/val/novel')  # default novel, but you can also test base/val class accuracy if you want
+        parser.add_argument('--save_iter', default=-1, type=int,
+                            help='saved feature from the model trained in x epoch, use the best model if x is -1')
+        parser.add_argument('--adaptation', action='store_true', help='further adaptation in test time or not')
+        parser.add_argument('--repeat', default=5, type=int,
+                            help='Repeat the test N times with different seeds and take the mean. The seeds range is [seed, seed+repeat]')
+    else:
+        raise ValueError('Unknown script')
+
+    return parser.parse_args()
+
+
 def parse_args_regression(script):
     parser = argparse.ArgumentParser(description='few-shot script %s' % (script))
     parser.add_argument('--seed', default=0, type=int, help='Seed for Numpy and pyTorch. Default: 0 (None)')
@@ -97,7 +188,7 @@ def parse_args_regression(script):
                         help='Different phases per each example')
     parser.add_argument('--noise', default=False, type=str2bool,
                         help='Different phases per each example')
-    parser.add_argument('--kernel_type', type=str, default='nn', choices=['rbf','bncossim', 'matern','poli1','poli2','cossim','nn'])
+    parser.add_argument('--kernel_type', type=str, default='nn', choices=['rbf', 'spectral', 'bncossim', 'matern','poli1','poli2','cossim','nn'])
     parser.add_argument('--save_dir', type=str, default='./save/regression')
     if script == 'train_regression':
         parser.add_argument('--start_epoch', default=0, type=int, help='Starting epoch')
