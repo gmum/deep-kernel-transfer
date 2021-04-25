@@ -165,9 +165,10 @@ class DKT(nn.Module):
             labels = labels.unsqueeze(1)
         if self.use_conditional:
             y, delta_log_py = self.cnf(labels, self.model.kernel.model(z),
-                                       torch.zeros(labels.size(0), 1).to(labels))
+                                       torch.zeros(labels.size(0), labels.size(1), 1).to(labels))
         else:
-            y, delta_log_py = self.cnf(labels, torch.zeros(labels.size(0), 1).to(labels))
+            print(labels.shape)
+            y, delta_log_py = self.cnf(labels, torch.zeros(labels.size(0), labels.size(1), 1).to(labels))
         delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
         y = y.squeeze()
         return delta_log_py, labels, y

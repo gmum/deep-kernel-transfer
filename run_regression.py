@@ -128,10 +128,10 @@ def setup_model(bb, config, device, params):
 
 def setup_flow(device, params):
     if params.use_conditional:
-        cnf = build_conditional_cnf(params, 1, params.context_dim).to(device)
+        cnf = build_conditional_cnf(params, params.output_dim, params.context_dim).to(device)
     else:
         regularization_fns, regularization_coeffs = create_regularization_fns(params)
-        cnf = build_model_tabular(params, 1, regularization_fns).to(device)
+        cnf = build_model_tabular(params, params.output_dim, regularization_fns).to(device)
     if params.spectral_norm:
         add_spectral_norm(cnf)
     set_cnf_options(params, cnf)
