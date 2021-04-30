@@ -182,47 +182,39 @@ class DKT(MetaTemplate):
                 stop_index = start_index+samples_per_model
                 target[start_index:stop_index] = 1.0
 
-                target_list.append(target.cuda())
+                target_list.append(target.unsqueeze(1).cuda())
 
-                target_flow = target.unsqueeze(1).cuda()
-
-                if self.use_conditional:
-                    y, delta_log_py = self.cnf(target_flow, self.model.models[way].kernel.model(z_train),
-                                               torch.zeros(target_flow.size(0), 1).to(target_flow))
-                    # TODO - maybe we should iterate over models every time - like below?
-                    # for idx, single_model in enumerate(self.model.models):
-                    #     y, delta_log_py = self.cnf(target_flow, single_model.kernel.model(z_train),
-                    #                                torch.zeros(target_flow.size(0), 1).to(target_flow))
-                else:
-                    y, delta_log_py = self.cnf(target_flow,
-                                               torch.zeros(target_flow.size(0), 1).to(target_flow))
-
-                flow_delta_log_py_list.append(delta_log_py.view(y.size(0), y.size(1), 1).sum(1))
-                flow_target_list.append(torch.squeeze(y.cuda()))
-
+            y = torch.cat(target_list, axis=1).unsqueeze(1)
+            y = y + torch.randn(y.size()).to(y)
+            y, delta_log_py = self.cnf(y, z_train.detach(),
+                                       torch.zeros(y.size(0), y.size(1), 1).to(y))
+            delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
             train_list = [z_train]*self.n_way
             lenghtscale = 0.0
             noise = 0.0
             outputscale = 0.0
-            flow_delta_list = list()
             for idx, single_model in enumerate(self.model.models):
-                flow_delta_list.append(torch.mean(flow_delta_log_py_list[idx]))
-                single_model.set_train_data(inputs=z_train, targets=flow_target_list[idx], strict=False)
-                if(single_model.covar_module.base_kernel.lengthscale is not None):
-                    lenghtscale+=single_model.covar_module.base_kernel.lengthscale.mean().cpu().detach().numpy().squeeze()
-                noise+=single_model.likelihood.noise.cpu().detach().numpy().squeeze()
-                if(single_model.covar_module.outputscale is not None):
+                single_model.set_train_data(inputs=z_train, targets=y[:,0,idx], strict=False)
+
+                if single_model.covar_module.base_kernel.lengthscale is not None:
+                    lenghtscale += single_model.covar_module.base_kernel.lengthscale.mean().cpu().detach().numpy().squeeze()
+                noise += single_model.likelihood.noise.cpu().detach().numpy().squeeze()
+
+                if single_model.covar_module.outputscale is not None:
                     outputscale+=single_model.covar_module.outputscale.cpu().detach().numpy().squeeze()
-            if(single_model.covar_module.base_kernel.lengthscale is not None): lenghtscale /= float(len(self.model.models))
+            if single_model.covar_module.base_kernel.lengthscale is not None:
+                lenghtscale /= float(len(self.model.models))
+
             noise /= float(len(self.model.models))
-            if(single_model.covar_module.outputscale is not None): outputscale /= float(len(self.model.models))
+            if single_model.covar_module.outputscale is not None:
+                outputscale /= float(len(self.model.models))
 
             ## Optimize
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
             #TODO - consider if we should use mean or sum function
-            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
-            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_deltas))
+            # loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
+            loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
             optimizer.step()
@@ -237,104 +229,41 @@ class DKT(MetaTemplate):
                 self.model.eval()
                 self.likelihood.eval()
                 self.feature_extractor.eval()
-
                 z_support = self.feature_extractor.forward(x_support).detach()
-                if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
-                z_support_list = [z_support]*len(y_support)
-                predictions = self.likelihood(*self.model(*z_support_list)) #return 20 MultiGaussian Distributions
-
-                y_support_labels = torch.tensor(y_support).cuda().unsqueeze(1).to(torch.float)
-                if self.use_conditional:
-                    delta_log_py_list = list()
-                    y_support_flow_list = list()
-                    for idx in range(len(y_support)):
-                        y_support_flow, delta_log_py = self.cnf(y_support_labels,
-                                                                self.model.models[idx].kernel.model(z_support),
-                                                                torch.zeros(y_support_labels.size(0), 1).to(y_support_labels))
-                        y_support_flow = y_support_flow.squeeze()
-                        y_support_flow_list.append(y_support_flow)
-                        delta_log_py_list.append(delta_log_py)
-                else:
-                    y_support_flow, delta_log_py = self.cnf(y_support_labels, torch.zeros(y_support_labels.size(0), 1).to(y_support_labels))
-                    y_support_flow = y_support_flow.squeeze()
-                    delta_log_py_list = [delta_log_py]*len(y_support)
-
-                new_means_list = list()
-                log_py_list = list()
-                for idx, pred in enumerate(predictions):
-                    if self.use_conditional:
-                        new_means_list.append(sample_fn(pred.mean.unsqueeze(1), self.model.models[idx].kernel.model(z_support)))
-                        log_py_list.append(normal_logprob(y_support_flow_list[idx], pred.mean, pred.stddev))
-                    else:
-                        new_means_list.append(sample_fn(pred.mean.unsqueeze(1)))
-                        log_py_list.append(normal_logprob(y_support_flow, pred.mean, pred.stddev))
-
-                flow_predictions_list = list()
-                for gaussian in new_means_list:
-                    flow_predictions_list.append(torch.sigmoid(gaussian).squeeze().cpu().detach().numpy())
-
-                NLL_list = list()
-                for log_py, delta_log_py in zip(log_py_list, delta_log_py_list):
-                    NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
-                    NLL_list.append(NLL)
-                NLL_support_mean = torch.mean(torch.stack(NLL_list)).cpu().detach()
-
-                y_pred_flow = np.vstack(flow_predictions_list).argmax(axis=0) #[model, classes]
-                accuracy_support_flow = (np.sum(y_pred_flow==y_support) / float(len(y_support))) * 100.0
-                if(self.writer is not None):
-                    self.writer.add_scalar('GP_support_accuracy', accuracy_support_flow, self.iteration)
-                    self.writer.add_scalar('GP_support_nll', NLL_support_mean.item(), self.iteration)
-
+                if (self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
+                z_support_list = [z_support] * len(y_support)
+                predictions = self.likelihood(*self.model(*z_support_list))  # return 20 MultiGaussian Distributions
+                gaussian_means = []
+                for gaussian in predictions:
+                    gaussian_means.append(gaussian.mean.unsqueeze(1))
+                gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
+                preds = sample_fn(gaussian_means, z_support).squeeze()
+                predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
+                y_pred = predictions_list.argmax(axis=1)  # [model, classes]
+                accuracy_support = (np.sum(y_pred == y_support) / float(len(y_support))) * 100.0
+                if (self.writer is not None): self.writer.add_scalar('GP_support_accuracy', accuracy_support,
+                                                                     self.iteration)
                 z_query = self.feature_extractor.forward(x_query).detach()
-                if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
-                z_query_list = [z_query]*len(y_query)
-                predictions = self.likelihood(*self.model(*z_query_list)) #return 20 MultiGaussian Distributions
+                if (self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
+                z_query_list = [z_query] * len(y_query)
+                predictions = self.likelihood(*self.model(*z_query_list))  # return 20 MultiGaussian Distributions
+                gaussian_means = []
+                for gaussian in predictions:
+                    gaussian_means.append(gaussian.mean.unsqueeze(1))
+                gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
+                preds = sample_fn(gaussian_means, z_query).squeeze()
+                predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
+                y_pred = predictions_list.argmax(axis=1)  # [model, classes]
+                accuracy_query = (np.sum(y_pred == y_query) / float(len(y_query))) * 100.0
+                if (self.writer is not None): self.writer.add_scalar('GP_query_accuracy', accuracy_query,
+                                                                     self.iteration)
 
-                y_query_labels = torch.tensor(y_query).cuda().unsqueeze(1).to(torch.float)
-                if self.use_conditional:
-                    delta_log_py_list = list()
-                    y_query_flow_list = list()
-                    for idx in range(len(y_support)):
-                        y_query_flow, delta_log_py = self.cnf(y_query_labels,
-                                                                self.model.models[idx].kernel.model(z_query),
-                                                                torch.zeros(y_query_labels.size(0), 1).to(y_query_labels))
-                        y_query_flow = y_query_flow.squeeze()
-                        y_query_flow_list.append(y_query_flow)
-                        delta_log_py_list.append(delta_log_py)
-                else:
-                    y_query_flow, delta_log_py = self.cnf(y_query_labels, torch.zeros(y_query_labels.size(0), 1).to(y_query_labels))
-                    y_query_flow = y_query_flow.squeeze()
-                    delta_log_py_list = [delta_log_py]*len(y_query)
-
-                new_means_list = list()
-                log_py_list = list()
-                for idx, pred in enumerate(predictions):
-                    if self.use_conditional:
-                        new_means_list.append(sample_fn(pred.mean.unsqueeze(1), self.model.models[idx].kernel.model(z_query)))
-                        log_py_list.append(normal_logprob(y_query_flow_list[idx], pred.mean, pred.stddev))
-                    else:
-                        new_means_list.append(sample_fn(pred.mean.unsqueeze(1)))
-                        log_py_list.append(normal_logprob(y_query_flow, pred.mean, pred.stddev))
-
-                flow_predictions_list = list()
-                for gaussian in new_means_list:
-                    flow_predictions_list.append(torch.sigmoid(gaussian).squeeze().cpu().detach().numpy())
-
-                NLL_list = list()
-                for log_py, delta_log_py in zip(log_py_list, delta_log_py_list):
-                    NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
-                    NLL_list.append(NLL)
-                NLL_query_mean = torch.mean(torch.stack(NLL_list)).cpu().detach()
-
-                y_pred = np.vstack(flow_predictions_list).argmax(axis=0) #[model, classes]
-                accuracy_query = (np.sum(y_pred==y_query) / float(len(y_query))) * 100.0
-                if(self.writer is not None):
-                    self.writer.add_scalar('GP_query_accuracy', accuracy_query, self.iteration)
-                    self.writer.add_scalar('GP_query_nll', NLL_query_mean.item(), self.iteration)
-
-            if i % print_freq==0:
-                if(self.writer is not None): self.writer.add_histogram('z_support', z_support, self.iteration)
-                print('Epoch [{:d}] [{:d}/{:d}] | Outscale {:f} | Lenghtscale {:f} | Noise {:f} | Loss {:f} | Supp. {:f} | Query {:f} | NLL supp. {:f} | NLL query {:f}'.format(epoch, i, len(train_loader), outputscale, lenghtscale, noise, loss.item(), accuracy_support_flow, accuracy_query, NLL_support_mean.item(), NLL_query_mean.item()))
+            if i % print_freq == 0:
+                if (self.writer is not None): self.writer.add_histogram('z_support', z_support, self.iteration)
+                print(
+                    'Epoch [{:d}] [{:d}/{:d}] | Outscale {:f} | Lenghtscale {:f} | Noise {:f} | Loss {:f} | Supp. {:f} | Query {:f}'.format(
+                        epoch, i, len(train_loader), outputscale, lenghtscale, noise, loss.item(), accuracy_support,
+                        accuracy_query))
 
     def correct(self, x, N=0, laplace=False):
         ##Dividing input x in query and support set
@@ -343,72 +272,41 @@ class DKT(MetaTemplate):
         x_query = x[:,self.n_support:,:,:,:].contiguous().view(self.n_way * (self.n_query), *x.size()[2:]).cuda()
         y_query = np.repeat(range(self.n_way), self.n_query)
 
-        ## Laplace approximation of the posterior
-        # if(laplace):
-        #     from sklearn.gaussian_process import GaussianProcessClassifier
-        #     from sklearn.gaussian_process.kernels import RBF, Matern
-        #     from sklearn.gaussian_process.kernels import ConstantKernel as C
-        #     kernel = 1.0 * RBF(length_scale=0.1 , length_scale_bounds=(0.1, 10.0))
-        #     gp = GaussianProcessClassifier(kernel=kernel, optimizer=None)
-        #     z_support = self.feature_extractor.forward(x_support).detach()
-        #     if(self.normalize): z_support = F.normalize(z_support, p=2, dim=1)
-        #     gp.fit(z_support.cpu().detach().numpy(), y_support.cpu().detach().numpy())
-        #     z_query = self.feature_extractor.forward(x_query).detach()
-        #     if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
-        #     y_pred = gp.predict(z_query.cpu().detach().numpy())
-        #     accuracy = (np.sum(y_pred==y_query) / float(len(y_query))) * 100.0
-        #     top1_correct = np.sum(y_pred==y_query)
-        #     count_this = len(y_query)
-        #     return float(top1_correct), count_this, 0.0
-
         x_train = x_support
         y_train = y_support
 
         target_list = list()
-        flow_target_list = list()
-        flow_delta_log_py_list = list()
         samples_per_model = int(len(y_train) / self.n_way)
 
         z_train = self.feature_extractor.forward(x_train).detach() #[340, 64]
         if(self.normalize): z_train = F.normalize(z_train, p=2, dim=1)
-
-        for way in range(self.n_way):
-            target = torch.ones(len(y_train), dtype=torch.float32) * -1.0
-            start_index = way * samples_per_model
-            stop_index = start_index+samples_per_model
-            target[start_index:stop_index] = 1.0
-            target_list.append(target.cuda())
-
-            target_flow = target.unsqueeze(1).cuda()
-
-            if self.use_conditional:
-                y, delta_log_py = self.cnf(target_flow, self.model.models[way].kernel.model(z_train),
-                                           torch.zeros(target_flow.size(0), 1).to(target_flow))
-                # TODO - maybe we should iterate over models every time - like below?
-                # for idx, single_model in enumerate(self.model.models):
-                #     y, delta_log_py = self.cnf(target_flow, single_model.kernel.model(z_train),
-                #                                torch.zeros(target_flow.size(0), 1).to(target_flow))
-            else:
-                y, delta_log_py = self.cnf(target_flow,
-                                           torch.zeros(target_flow.size(0), 1).to(target_flow))
-
-            flow_delta_log_py_list.append(delta_log_py.view(y.size(0), y.size(1), 1).sum(1))
-            flow_target_list.append(torch.squeeze(y.cuda()))
-
         train_list = [z_train]*self.n_way
 
-        flow_delta_list = list()
-        for idx, single_model in enumerate(self.model.models):
-            flow_delta_list.append(torch.mean(flow_delta_log_py_list[idx]))
-            single_model.set_train_data(inputs=z_train, targets=flow_target_list[idx], strict=False)
+        sample_fn, _ = get_transforms(self.cnf, self.use_conditional)
+        for way in range(self.n_way):
+            # print('WAY: ', way)
+            target = torch.ones(len(y_train), dtype=torch.float32) * -1.0
 
-        optimizer = torch.optim.Adam([{'params': self.model.parameters(), 'lr': 1e-3},
-                                      {'params': self.cnf.parameters(), 'lr': 1e-3}])
+            start_index = way * samples_per_model
+            stop_index = start_index + samples_per_model
+            target[start_index:stop_index] = 1.0
+
+            target_list.append(target.unsqueeze(1).cuda())
+
+        y = torch.cat(target_list, axis=1).unsqueeze(1)
+        #y = y + torch.randn(y.size()).to(y)
+        y, delta_log_py = self.cnf(y, z_train.detach(), torch.zeros(y.size(0), y.size(1), 1).to(y))
+
+
+        for idx, single_model in enumerate(self.model.models):
+            single_model.set_train_data(inputs=z_train, targets=y[:, 0, idx], strict=False)
+
+        optimizer = torch.optim.Adam([{'params': self.model.parameters(), 'lr': 0.001},
+                                      {'params': self.cnf.parameters(), 'lr': 0.001}])
 
         self.model.train()
         self.likelihood.train()
         self.feature_extractor.eval()
-        # TODO maybe cnf should be also in eval mode (then also add cnf's learning rate to params)?
         self.cnf.train()
 
         avg_loss=0.0
@@ -416,100 +314,54 @@ class DKT(MetaTemplate):
             ## Optimize
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
-            # TODO - consider the best loss
-            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
-            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_deltas))
-            # loss = -self.mll(output, self.model.train_targets)
+            loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
             loss.backward()
             optimizer.step()
             avg_loss = avg_loss+loss.item()
 
-        sample_fn, _ = get_transforms(self.cnf, self.use_conditional)
         with torch.no_grad(), gpytorch.settings.num_likelihood_samples(32):
-            self.cnf.eval()
             self.model.eval()
             self.likelihood.eval()
             self.feature_extractor.eval()
-
-            # TODO just copied from eval
+            self.cnf.eval()
             z_query = self.feature_extractor.forward(x_query).detach()
             if(self.normalize): z_query = F.normalize(z_query, p=2, dim=1)
             z_query_list = [z_query]*len(y_query)
-            predictions = self.likelihood(*self.model(*z_query_list)) #return n_way MultiGaussians
-
-            y_query_labels = torch.tensor(y_query).cuda().unsqueeze(1).to(torch.float)
-            if self.use_conditional:
-                delta_log_py_list = list()
-                y_query_flow_list = list()
-                for idx in range(len(y_support)):
-                    y_query_flow, delta_log_py = self.cnf(y_query_labels,
-                                                          self.model.models[idx].kernel.model(z_query),
-                                                          torch.zeros(y_query_labels.size(0), 1).to(y_query_labels))
-                    y_query_flow = y_query_flow.squeeze()
-                    y_query_flow_list.append(y_query_flow)
-                    delta_log_py_list.append(delta_log_py)
-            else:
-                y_query_flow, delta_log_py = self.cnf(y_query_labels, torch.zeros(y_query_labels.size(0), 1).to(y_query_labels))
-                y_query_flow = y_query_flow.squeeze()
-                delta_log_py_list = [delta_log_py]*len(y_query)
-
-            new_means_list = list()
-            log_py_list = list()
-            for idx, pred in enumerate(predictions):
-                if self.use_conditional:
-                    new_means_list.append(sample_fn(pred.mean.unsqueeze(1), self.model.models[idx].kernel.model(z_query)))
-                    log_py_list.append(normal_logprob(y_query_flow_list[idx], pred.mean, pred.stddev))
-                else:
-                    new_means_list.append(sample_fn(pred.mean.unsqueeze(1)))
-                    log_py_list.append(normal_logprob(y_query_flow, pred.mean, pred.stddev))
-
-            flow_predictions_list = list()
-            for gaussian in new_means_list:
-                flow_predictions_list.append(torch.sigmoid(gaussian).squeeze().cpu().detach().numpy())
-
-            NLL_list = list()
-            for log_py, delta_log_py in zip(log_py_list, delta_log_py_list):
-                NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
-                NLL_list.append(NLL)
-            NLL_mean = torch.mean(torch.stack(NLL_list)).cpu().detach()
-            y_pred = np.vstack(flow_predictions_list).argmax(axis=0) #[model, classes]
+            predictions = self.likelihood(*self.model(*z_query_list))  # return 20 MultiGaussian Distributions
+            gaussian_means = []
+            for gaussian in predictions:
+                gaussian_means.append(gaussian.mean.unsqueeze(1))
+            gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
+            preds = sample_fn(gaussian_means, z_query).squeeze()
+            predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
+            y_pred = predictions_list.argmax(axis=1)  #[model, classes]
             top1_correct = np.sum(y_pred == y_query)
             count_this = len(y_query)
-        return float(top1_correct), count_this, avg_loss/float(N+1e-10), NLL_mean.item()
+        return float(top1_correct), count_this, avg_loss/float(N+1e-10)
 
     def test_loop(self, test_loader, record=None, return_std=False):
         print_freq = 10
         correct =0
         count = 0
         acc_all = []
-        NLL_all = []
         iter_num = len(test_loader)
         for i, (x,_) in enumerate(test_loader):
             self.n_query = x.size(1) - self.n_support
             if self.change_way:
                 self.n_way  = x.size(0)
-            correct_this, count_this, loss_value, NLL = self.correct(x)
+            correct_this, count_this, loss_value = self.correct(x)
             acc_all.append(correct_this/ count_this*100)
-            NLL_all.append(NLL)
             if(i % 100==0):
                 acc_mean = np.mean(np.asarray(acc_all))
-                NLL_mean = np.mean(np.asarray(NLL_all))
-                print('Test | Batch {:d}/{:d} | Loss {:f} | Acc {:f} | NLL {:f}'.format(i, len(test_loader), loss_value, acc_mean, NLL_mean))
+                print('Test | Batch {:d}/{:d} | Loss {:f} | Acc {:f}'.format(i, len(test_loader), loss_value, acc_mean))
         acc_all  = np.asarray(acc_all)
         acc_mean = np.mean(acc_all)
         acc_std  = np.std(acc_all)
-        NLL_all = np.asarray(NLL_all)
-        NLL_mean = np.mean(NLL_all)
-        NLL_std = np.std(NLL_all)
         print('%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num,  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
-        print('%d Test NLL = %4.2f +- %4.2f' %(iter_num,  NLL_mean, 1.96* NLL_std/np.sqrt(iter_num)))
-        if(self.writer is not None):
-            self.writer.add_scalar('test_accuracy', acc_mean, self.iteration)
-            self.writer.add_scalar('test_nll', NLL_mean, self.iteration)
-        if(return_std):
-            return acc_mean, acc_std, NLL_mean, NLL_std
-        else:
-            return acc_mean, NLL_mean
+        if(self.writer is not None): self.writer.add_scalar('test_accuracy', acc_mean, self.iteration)
+        if(return_std): return acc_mean, acc_std
+        else: return acc_mean
+
 
     def get_logits(self, x):
         self.n_query = x.size(1) - self.n_support

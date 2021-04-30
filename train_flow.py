@@ -61,7 +61,7 @@ def train(base_loader, val_loader, model, optimization, start_epoch, stop_epoch,
             os.makedirs(params.checkpoint_dir)
 
         #TODO - maybe add nll to checking for the best model?
-        acc, nll = model.test_loop(val_loader)
+        acc = model.test_loop(val_loader)
         if acc > max_acc:  # for baseline and baseline++, we don't use validation here so we let acc = -1
             print("--> Best model! save...")
             max_acc = acc
@@ -151,11 +151,7 @@ if __name__ == '__main__':
         # a batch for SetDataManager: a [n_way, n_support + n_query, dim, w, h] tensor
 
         if(params.method == 'DKT'):
-            if params.use_conditional:
-                cnf = build_conditional_cnf(params, 1, params.context_dim).cuda()
-            else:
-                regularization_fns, regularization_coeffs = create_regularization_fns(params)
-                cnf = build_model_tabular(params, 1, regularization_fns).cuda()
+            cnf = build_conditional_cnf(params, params.train_n_way, params.context_dim).cuda()
             if params.spectral_norm: add_spectral_norm(cnf)
             set_cnf_options(params, cnf)
             model = DKT(model_dict[params.model], **train_few_shot_params, cnf=cnf, use_conditional=params.use_conditional, config=configs)

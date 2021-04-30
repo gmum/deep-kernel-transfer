@@ -11,10 +11,16 @@ from .squeeze import squeeze, unsqueeze
 __all__ = ["ODEnet", "ODEnetC", "AutoencoderDiffEqNet", "ODEfunc", "ODEfuncC", "AutoencoderODEfunc"]
 
 
-def divergence_bf(dx, y, **unused_kwargs):
+# def divergence_bf(dx, y, **unused_kwargs):
+#     sum_diag = 0.
+#     for i in range(y.shape[1]):
+#         sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
+#     return sum_diag.contiguous()
+
+def divergence_bf(dx, y, e=None):
     sum_diag = 0.
-    for i in range(y.shape[1]):
-        sum_diag += torch.autograd.grad(dx[:, i].sum(), y, create_graph=True)[0].contiguous()[:, i].contiguous()
+    for i in range(y.shape[-1]):
+        sum_diag += torch.autograd.grad(dx[:,:, i].sum(), y, create_graph=True)[0].contiguous()[:, :, i].contiguous()
     return sum_diag.contiguous()
 
 
@@ -374,11 +380,7 @@ class ODEfuncC(nn.Module):
             if not self.training and dy.view(dy.shape[0], -1).shape[1] == 2:
                 divergence = divergence_bf(dy, y).view(batchsize, 1)
             else:
-                divergence = self.divergence_fn(dy, y, e=self._e).view(batchsize, 1)
-        if self.residual:
-            dy = dy - y
-            divergence -= torch.ones_like(divergence) * torch.tensor(np.prod(y.shape[1:]), dtype=torch.float32
-                                                                     ).to(divergence)
+                divergence = self.divergence_fn(dy, y, e=self._e).unsqueeze(-1)
         return tuple([dy, -divergence] + [torch.zeros_like(s_).requires_grad_(True) for s_ in states[2:]])
 
 
