@@ -146,6 +146,12 @@ class DKT(MetaTemplate):
                 single_model.likelihood.noise=self.noise_list[idx].clone().detach()
                 single_model.covar_module.outputscale=self.outputscale_list[idx].clone().detach()
 
+    def get_context(self, z):
+        context = []
+        for idx, single_model in enumerate(self.model.models):
+            context.append(single_model.kernel.model(z))
+        return torch.cat(context, axis=1)
+
     def train_loop(self, epoch, train_loader, optimizer, print_freq=10):
         optimizer = torch.optim.Adam([{'params': self.model.parameters(), 'lr': 1e-4},
                                       {'params': self.feature_extractor.parameters(), 'lr': 1e-3},
@@ -185,8 +191,8 @@ class DKT(MetaTemplate):
                 target_list.append(target.unsqueeze(1).cuda())
 
             y = torch.cat(target_list, axis=1).unsqueeze(1)
-            y = y + torch.randn(y.size()).to(y)
-            y, delta_log_py = self.cnf(y, z_train.detach(),
+            y = y + 0.1*torch.randn(y.size()).to(y)
+            y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(),
                                        torch.zeros(y.size(0), y.size(1), 1).to(y))
             delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
             train_list = [z_train]*self.n_way
@@ -237,7 +243,7 @@ class DKT(MetaTemplate):
                 for gaussian in predictions:
                     gaussian_means.append(gaussian.mean.unsqueeze(1))
                 gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
-                preds = sample_fn(gaussian_means, z_support).squeeze()
+                preds = sample_fn(gaussian_means, self.get_context(z_support)).squeeze()
                 predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
                 y_pred = predictions_list.argmax(axis=1)  # [model, classes]
                 accuracy_support = (np.sum(y_pred == y_support) / float(len(y_support))) * 100.0
@@ -251,7 +257,7 @@ class DKT(MetaTemplate):
                 for gaussian in predictions:
                     gaussian_means.append(gaussian.mean.unsqueeze(1))
                 gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
-                preds = sample_fn(gaussian_means, z_query).squeeze()
+                preds = sample_fn(gaussian_means, self.get_context(z_query)).squeeze()
                 predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
                 y_pred = predictions_list.argmax(axis=1)  # [model, classes]
                 accuracy_query = (np.sum(y_pred == y_query) / float(len(y_query))) * 100.0
@@ -295,7 +301,7 @@ class DKT(MetaTemplate):
 
         y = torch.cat(target_list, axis=1).unsqueeze(1)
         #y = y + torch.randn(y.size()).to(y)
-        y, delta_log_py = self.cnf(y, z_train.detach(), torch.zeros(y.size(0), y.size(1), 1).to(y))
+        y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(), torch.zeros(y.size(0), y.size(1), 1).to(y))
 
 
         for idx, single_model in enumerate(self.model.models):
@@ -332,7 +338,7 @@ class DKT(MetaTemplate):
             for gaussian in predictions:
                 gaussian_means.append(gaussian.mean.unsqueeze(1))
             gaussian_means = torch.cat(gaussian_means, axis=1).unsqueeze(1)
-            preds = sample_fn(gaussian_means, z_query).squeeze()
+            preds = sample_fn(gaussian_means, self.get_context(z_query)).squeeze()
             predictions_list = torch.sigmoid(preds).cpu().detach().numpy()
             y_pred = predictions_list.argmax(axis=1)  #[model, classes]
             top1_correct = np.sum(y_pred == y_query)
