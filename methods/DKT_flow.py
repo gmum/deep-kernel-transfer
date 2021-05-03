@@ -168,6 +168,7 @@ class DKT(MetaTemplate):
             flow_delta_log_py_list = list()
             samples_per_model = int(len(y_train) / self.n_way) #25 / 5 = 5
 
+            self.cnf.train()
             self.model.train()
             self.likelihood.train()
             self.feature_extractor.train()
@@ -207,6 +208,7 @@ class DKT(MetaTemplate):
             flow_delta_list = list()
             for idx, single_model in enumerate(self.model.models):
                 flow_delta_list.append(torch.mean(flow_delta_log_py_list[idx]))
+                # flow_delta_list.append(torch.sum(flow_delta_log_py_list[idx]))
                 single_model.set_train_data(inputs=z_train, targets=flow_target_list[idx], strict=False)
                 if(single_model.covar_module.base_kernel.lengthscale is not None):
                     lenghtscale+=single_model.covar_module.base_kernel.lengthscale.mean().cpu().detach().numpy().squeeze()
@@ -221,8 +223,8 @@ class DKT(MetaTemplate):
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
             #TODO - consider if we should use mean or sum function
-            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
-            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_deltas))
+            loss = -self.mll(output, self.model.train_targets) + sum(flow_delta_list)
+            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_delta_list))
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
             optimizer.step()
@@ -400,6 +402,7 @@ class DKT(MetaTemplate):
         flow_delta_list = list()
         for idx, single_model in enumerate(self.model.models):
             flow_delta_list.append(torch.mean(flow_delta_log_py_list[idx]))
+            # flow_delta_list.append(torch.sum(flow_delta_log_py_list[idx]))
             single_model.set_train_data(inputs=z_train, targets=flow_target_list[idx], strict=False)
 
         optimizer = torch.optim.Adam([{'params': self.model.parameters(), 'lr': 1e-3},
@@ -417,8 +420,8 @@ class DKT(MetaTemplate):
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
             # TODO - consider the best loss
-            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
-            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_deltas))
+            loss = -self.mll(output, self.model.train_targets) + sum(flow_delta_list)
+            # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_delta_list))
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
             optimizer.step()
