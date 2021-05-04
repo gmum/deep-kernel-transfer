@@ -192,7 +192,9 @@ class DKT(MetaTemplate):
 
             y = torch.cat(target_list, axis=1).unsqueeze(1)
             y = y + 0.1*torch.randn(y.size()).to(y)
-            y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(),
+            # y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(),
+            #                            torch.zeros(y.size(0), y.size(1), 1).to(y))
+            y, delta_log_py = self.cnf(y, self.get_context(z_train),
                                        torch.zeros(y.size(0), y.size(1), 1).to(y))
             delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
             train_list = [z_train]*self.n_way
@@ -220,7 +222,8 @@ class DKT(MetaTemplate):
             output = self.model(*self.model.train_inputs)
             #TODO - consider if we should use mean or sum function
             # loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.tensor(flow_delta_list))
-            loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
+            # loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
+            loss = -self.mll(output, self.model.train_targets) + torch.mean(delta_log_py)
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
             optimizer.step()
@@ -301,7 +304,8 @@ class DKT(MetaTemplate):
 
         y = torch.cat(target_list, axis=1).unsqueeze(1)
         #y = y + torch.randn(y.size()).to(y)
-        y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(), torch.zeros(y.size(0), y.size(1), 1).to(y))
+        # y, delta_log_py = self.cnf(y, self.get_context(z_train).detach(), torch.zeros(y.size(0), y.size(1), 1).to(y))
+        y, delta_log_py = self.cnf(y, self.get_context(z_train), torch.zeros(y.size(0), y.size(1), 1).to(y))
 
 
         for idx, single_model in enumerate(self.model.models):
@@ -320,7 +324,8 @@ class DKT(MetaTemplate):
             ## Optimize
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
-            loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
+            # loss = -self.mll(output, self.model.train_targets) + torch.sum(delta_log_py)
+            loss = -self.mll(output, self.model.train_targets) + torch.mean(delta_log_py)
             loss.backward()
             optimizer.step()
             avg_loss = avg_loss+loss.item()
