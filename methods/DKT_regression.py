@@ -103,7 +103,8 @@ class DKT(nn.Module):
         self.model.train()
         self.feature_extractor.train()
         self.likelihood.train()
-        self.cnf.train()
+        if self.is_flow:
+            self.cnf.train()
 
         if self.dataset != "sines":
             batch, batch_labels = get_batch(train_people)
@@ -219,7 +220,8 @@ class DKT(nn.Module):
         self.model.eval()
         self.feature_extractor.eval()
         self.likelihood.eval()
-        self.cnf.eval()
+        if self.is_flow:
+            self.cnf.eval()
 
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
