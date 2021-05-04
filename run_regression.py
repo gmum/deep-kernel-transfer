@@ -51,7 +51,7 @@ def test(model, params, save_path, results_logger):
     model.load_checkpoint(save_path)
 
     for epoch in range(params.n_test_epochs):
-        res = model.test_loop(params.n_support, params)
+        res = model.test_loop(params.n_support, params, os.path.dirname(save_path))
         detached_res = []
         for r in res:
             detached = r.cpu().detach().numpy()
@@ -112,6 +112,7 @@ def setup_model(bb, config, device, params):
         if params.method == 'DKT':
             model = DKT_flow(bb, device, num_tasks=params.num_tasks, config=config,
                              dataset=params.dataset, cnf=cnf, use_conditional=params.use_conditional,
+                             add_noise=params.add_noise,
                              multi_type=params.multi_type)
         else:
             raise ValueError('Unrecognised method')

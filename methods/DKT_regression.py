@@ -8,7 +8,7 @@ import torch.nn as nn
 from data.data_generator import SinusoidalDataGenerator
 from data.qmul_loader import get_batch, train_people, test_people
 from models.kernels import NNKernel, MultiNNKernel, NNKernelNoInner
-from training.utils import normal_logprob
+from training.utils import normal_logprob, prepare_for_plots, plot_histograms
 
 
 def get_transforms(model, use_context):
@@ -42,7 +42,7 @@ def get_transforms(model, use_context):
 
 class DKT(nn.Module):
     def __init__(self, backbone, device, num_tasks=1, config=None, dataset='QMUL', cnf=None, use_conditional=False,
-                 multi_type=2):
+                 add_noise=False, multi_type=2):
         super(DKT, self).__init__()
         ## GP parameters
         self.feature_extractor = backbone
@@ -57,7 +57,7 @@ class DKT(nn.Module):
             self.is_flow = True
         else:
             self.is_flow = False
-
+        self.add_noise = add_noise
         self.get_model_likelihood_mll()  # Init model, likelihood, and mll
 
 
@@ -121,7 +121,8 @@ class DKT(nn.Module):
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
             z = self.feature_extractor(inputs)
-
+            if self.add_noise:
+                labels = labels + torch.normal(0, 0.1, size=labels.shape).to(labels)
             if self.is_flow:
                 delta_log_py, labels, y = self.apply_flow(labels, z)
             else:
@@ -130,10 +131,9 @@ class DKT(nn.Module):
             predictions = self.model(z)
             loss = -self.mll(predictions, self.model.train_targets)
             if self.is_flow:
-                loss = loss + torch.mean(delta_log_py)
+                loss = loss + torch.sum(delta_log_py)
             loss.backward()
             optimizer.step()
-
 
             mse, _ = self.compute_mse(labels, predictions, z)
 
@@ -167,13 +167,12 @@ class DKT(nn.Module):
             y, delta_log_py = self.cnf(labels, self.model.kernel.model(z),
                                        torch.zeros(labels.size(0), labels.size(1), 1).to(labels))
         else:
-            print(labels.shape)
             y, delta_log_py = self.cnf(labels, torch.zeros(labels.size(0), labels.size(1), 1).to(labels))
         delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
         y = y.squeeze()
         return delta_log_py, labels, y
 
-    def test_loop(self, n_support, params=None):
+    def test_loop(self, n_support, params=None, save_dir=None):
         if params is None or self.dataset != "sines":
             x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
         elif self.dataset == "sines":
@@ -202,7 +201,14 @@ class DKT(nn.Module):
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
             pred = self.likelihood(self.model(z_query))
+            context = None
+            new_means = None
             if self.is_flow:
+                if self.use_conditional:
+                    context = self.model.kernel.model(z_query)
+                    new_means = sample_fn(pred.mean.unsqueeze(1), context)
+                else:
+                    new_means = sample_fn(pred.mean.unsqueeze(1))
                 delta_log_py, _, y = self.apply_flow(y_all[n], z_query)
                 log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
                 NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
@@ -210,7 +216,10 @@ class DKT(nn.Module):
             else:
                 log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
                 NLL = -1.0 * torch.mean(log_py)
-
+            if save_dir is not None:
+                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
+                                                                                   sample_fn, context, new_means)
+                plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
             mse, new_means = self.compute_mse(y_all[n], pred, z_query)
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 

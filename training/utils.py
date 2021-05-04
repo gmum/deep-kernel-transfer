@@ -1,6 +1,8 @@
 import math
+import os
 from math import pi
 
+import matplotlib.pyplot as plt
 import numpy as np
 import six
 import torch
@@ -9,6 +11,50 @@ import CNF_lib.layers as layers
 import CNF_lib.layers.wrappers.cnf_regularization as reg_lib
 import CNF_lib.spectral_norm as spectral_norm
 from CNF_lib.layers.odefunc import divergence_bf, divergence_approx
+
+
+def prepare_for_plots(pred, y_true, sample_fn, context, new_means):
+    samples = []
+    flow_samples = []
+    true_y = []
+    flow_y = []
+    gauss_y = []
+    for k in range(pred.mean.shape[0]):
+        sample = torch.normal(pred.mean[k], pred.stddev[k], size=(1, 10000)).reshape(10000, 1)
+        samples.append(sample)
+        true_y.append(y_true[k])
+        gauss_y.append(pred.mean[k])
+        if new_means is not None:
+            if context is not None:
+                flow_sample = sample_fn(sample.cuda(), context[k].repeat(10000, 1))
+            else:
+                flow_sample = sample_fn(sample.cuda())
+            flow_samples.append(flow_sample)
+            flow_y.append(new_means[k])
+    if new_means is not None:
+        return samples, true_y, gauss_y, flow_samples, flow_y
+    else:
+        return samples, true_y, gauss_y, None, None
+
+
+def plot_histograms(path, samples, true_y, gauss_y,  n_support, flow_samples=None, flow_y=None):
+
+    f, a = plt.subplots(5, 4, figsize=(30, 30))
+    a = a.ravel()
+    for idx, ax in enumerate(a):
+        if idx < len(samples):
+            single_guass = samples[idx].cpu().detach().numpy()
+            ax.hist(single_guass, 50, density=True, facecolor='g', alpha=0.75)
+            if flow_samples is not None:
+                single_flow = flow_samples[idx].cpu().detach().numpy()
+                ax.hist(single_flow, 50, density=True, facecolor='r', alpha=0.75)
+                ax.axvline(flow_y[idx].cpu().detach().numpy(), 0, 1.6, color='r')
+            ax.axvline(gauss_y[idx].cpu().detach().numpy(), 0, 1.6, color='g')
+            ax.axvline(true_y[idx].cpu().detach().numpy(), 0, 1.6, color='b')
+    plt.tight_layout()
+
+    plt.grid(True)
+    plt.savefig(os.path.join(path, "image_" + str(n_support) + ".png"))
 
 
 def one_hot(y, num_class):

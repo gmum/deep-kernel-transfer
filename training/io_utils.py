@@ -126,6 +126,7 @@ def parse_args_regression():
     parser.add_argument("--num_blocks", type=int, default=2, help='Number of stacked CNFs.')
     parser.add_argument('--time_length', type=float, default=0.5)
     parser.add_argument('--train_T', type=eval, default=False)
+    parser.add_argument('--add_noise', type=eval, default=False)
     parser.add_argument("--divergence_fn", type=str, default="brute_force", choices=["brute_force", "approximate"])
     parser.add_argument("--nonlinearity", type=str, default="tanh", choices=NONLINEARITIES)
 
