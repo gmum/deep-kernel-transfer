@@ -8,7 +8,7 @@ import torch.nn as nn
 from data.data_generator import SinusoidalDataGenerator
 from data.qmul_loader import get_batch, train_people, test_people
 from models.kernels import NNKernel, MultiNNKernel, NNKernelNoInner
-from training.utils import normal_logprob
+from training.utils import normal_logprob, prepare_for_plots, plot_histograms
 
 
 def get_transforms(model, use_context):
@@ -42,7 +42,7 @@ def get_transforms(model, use_context):
 
 class DKT(nn.Module):
     def __init__(self, backbone, device, num_tasks=1, config=None, dataset='QMUL', cnf=None, use_conditional=False,
-                 multi_type=2):
+                 add_noise=False, context_type='nn', multi_type=2):
         super(DKT, self).__init__()
         ## GP parameters
         self.feature_extractor = backbone
@@ -53,13 +53,13 @@ class DKT(nn.Module):
         self.cnf = cnf
         self.use_conditional = use_conditional
         self.multi_type = multi_type
+        self.context_type = context_type
         if self.cnf is not None:
             self.is_flow = True
         else:
             self.is_flow = False
-
+        self.add_noise = add_noise
         self.get_model_likelihood_mll()  # Init model, likelihood, and mll
-
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
         if self.dataset == 'QMUL':
@@ -99,6 +99,13 @@ class DKT(nn.Module):
     def train_loop(self, epoch, optimizer, params, results_logger):
         # print("NUM KERNEL PARAMS {}".format(sum([p.numel() for p in self.model.parameters() if p.requires_grad])))
         # print("NUM TRANSFORM PARAMS {}".format(sum([p.numel() for p in self.feature_extractor.parameters() if p.requires_grad])))
+
+        self.model.train()
+        self.feature_extractor.train()
+        self.likelihood.train()
+        if self.is_flow:
+            self.cnf.train()
+
         if self.dataset != "sines":
             batch, batch_labels = get_batch(train_people)
         else:
@@ -121,7 +128,8 @@ class DKT(nn.Module):
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
             z = self.feature_extractor(inputs)
-
+            if self.add_noise:
+                labels = labels + torch.normal(0, 0.1, size=labels.shape).to(labels)
             if self.is_flow:
                 delta_log_py, labels, y = self.apply_flow(labels, z)
             else:
@@ -133,7 +141,6 @@ class DKT(nn.Module):
                 loss = loss + torch.mean(delta_log_py)
             loss.backward()
             optimizer.step()
-
 
             mse, _ = self.compute_mse(labels, predictions, z)
 
@@ -150,29 +157,50 @@ class DKT(nn.Module):
     def compute_mse(self, labels, predictions, z):
         if self.is_flow:
             sample_fn, _ = get_transforms(self.cnf, self.use_conditional)
-            if self.use_conditional:
-                new_means = sample_fn(predictions.mean.unsqueeze(1), self.model.kernel.model(z))
+            if self.num_tasks == 1:
+                means = predictions.mean.unsqueeze(1)
             else:
-                new_means = sample_fn(predictions.mean.unsqueeze(1))
+                means = predictions.mean
+            if self.use_conditional:
+                new_means = sample_fn(means, self.get_context(z))
+            else:
+                new_means = sample_fn(means)
             mse = self.mse(new_means.squeeze(), labels)
         else:
             mse = self.mse(predictions.mean, labels)
             new_means = None
         return mse, new_means
 
+    def get_context(self, z):
+        if self.context_type == 'nn':
+            if self.num_tasks == 1:
+                context = self.model.kernel.model(z)
+            else:
+                if self.multi_type == 3:
+                    contexts = []
+                    for k in range(len(self.model.kernels)):
+                        contexts.append(self.model.kernels[k].model(z))
+                    context = sum(contexts)
+                else:
+                    context = self.model.kernels.model(z)
+        elif self.context_type == 'backbone':
+            context = z
+        else:
+            raise ValueError("unknown context type")
+        return context
+
     def apply_flow(self, labels, z):
         if self.num_tasks == 1:
             labels = labels.unsqueeze(1)
         if self.use_conditional:
-            y, delta_log_py = self.cnf(labels, self.model.kernel.model(z),
+            y, delta_log_py = self.cnf(labels, self.get_context(z),
                                        torch.zeros(labels.size(0), 1).to(labels))
         else:
             y, delta_log_py = self.cnf(labels, torch.zeros(labels.size(0), 1).to(labels))
-        delta_log_py = delta_log_py.view(y.size(0), y.size(1), 1).sum(1)
         y = y.squeeze()
         return delta_log_py, labels, y
 
-    def test_loop(self, n_support, params=None):
+    def test_loop(self, n_support, params=None, save_dir=None):
         if params is None or self.dataset != "sines":
             x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
         elif self.dataset == "sines":
@@ -197,24 +225,45 @@ class DKT(nn.Module):
         self.model.eval()
         self.feature_extractor.eval()
         self.likelihood.eval()
+        if self.is_flow:
+            self.cnf.eval()
 
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
-            pred = self.likelihood(self.model(z_query))
+            predictions_query = self.model(z_query)
+            pred = self.likelihood(predictions_query)
+            context = None
+            new_means = None
             if self.is_flow:
+                if self.num_tasks == 1:
+                    mean_base = pred.mean.unsqueeze(1)
+                else:
+                    mean_base = pred.mean
+                if self.use_conditional:
+                    context = self.get_context(z_query)
+                    new_means = sample_fn(mean_base, context)
+                else:
+                    new_means = sample_fn(mean_base)
                 delta_log_py, _, y = self.apply_flow(y_all[n], z_query)
-                log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
-                NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
-
+                log_py = -self.mll(predictions_query, y.squeeze())
+                NLL = log_py + torch.mean(delta_log_py.squeeze())
+                #log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
+                #NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
             else:
-                log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
-                NLL = -1.0 * torch.mean(log_py)
-
+                NLL = -self.mll(predictions_query, y_all[n])
+                #log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
+                #NLL = -1.0 * torch.mean(log_py)
+            if save_dir is not None and self.num_tasks == 1:
+                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
+                                                                                   sample_fn, context, new_means)
+                plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
             mse, new_means = self.compute_mse(y_all[n], pred, z_query)
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 
-        # TODO: czy dla flowa nie powinnismy zwracac new_means?
-        return mse, NLL, pred.mean, lower, upper, x_all[n], y_all[n]
+        if self.is_flow:
+            return mse, NLL, new_means, lower, upper, x_all[n], y_all[n]
+        else:
+            return mse, NLL, pred.mean, lower, upper, x_all[n], y_all[n]
 
     def get_support_query_qmul(self, n_support):
         inputs, targets = get_batch(test_people)
@@ -316,20 +365,20 @@ class MultitaskExactGPLayer(gpytorch.models.ExactGP):
         self.dataset = dataset
         if kernel == "nn":
             if multi_type == 2:
-                kernels = NNKernel(input_dim=config.nn_config["input_dim"],
+                self.kernels = NNKernel(input_dim=config.nn_config["input_dim"],
                                    output_dim=config.nn_config["output_dim"],
                                    num_layers=config.nn_config["num_layers"],
                                    hidden_dim=config.nn_config["hidden_dim"])
 
-                self.covar_module = gpytorch.kernels.MultitaskKernel(kernels, num_tasks)
+                self.covar_module = gpytorch.kernels.MultitaskKernel(self.kernels, num_tasks)
             elif multi_type == 3:
-                kernels = []
+                self.kernels = []
                 for i in range(num_tasks):
-                    kernels.append(NNKernel(input_dim=config.nn_config["input_dim"],
+                    self.kernels.append(NNKernel(input_dim=config.nn_config["input_dim"],
                                             output_dim=config.nn_config["output_dim"],
                                             num_layers=config.nn_config["num_layers"],
                                             hidden_dim=config.nn_config["hidden_dim"]))
-                self.covar_module = MultiNNKernel(num_tasks, kernels)
+                self.covar_module = MultiNNKernel(num_tasks, self.kernels)
             else:
                 raise ValueError("Unsupported multi kernel type {}".format(multi_type))
         elif kernel == "rbf":

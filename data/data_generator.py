@@ -58,7 +58,7 @@ class SinusoidalDataGenerator(object):
             phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
 
         if self.gaussian_noise is True:
-            noise = np.random.normal(0, 1, [self.batch_size, self.num_samples_per_class, self.dim_output])
+            noise = np.random.normal(0, 0.1, [self.batch_size, self.num_samples_per_class, self.dim_output])
         else:
             noise = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
 

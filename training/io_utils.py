@@ -102,8 +102,8 @@ def parse_args_regression():
     parser.add_argument('--num_tasks', type=int, default=1, help="the dimension of the target.")
     parser.add_argument('--multi_type', type=int, choices=[2,3], default=3, help="type of nn multi-kernel, used if num-tasks>1 "
                                                                       "and kernel type == n")
-    parser.add_argument('--method_lr', type=float, default=0.001)
-    parser.add_argument('--feature_extractor_lr', type=float, default=0.001)
+    parser.add_argument('--method_lr', type=float, default=0.01)
+    parser.add_argument('--feature_extractor_lr', type=float, default=0.01)
     parser.add_argument('--cnf_lr', type=float, default=0.001)
 
     parser.add_argument('--all_lr', type=float, help="if not None, sets up the same given learning rate for all "
@@ -116,7 +116,9 @@ def parse_args_regression():
     parser.add_argument("--use_conditional", default=False, type=str2bool,
                         help='If CNF should be conditional')
 
-    parser.add_argument("--context_dim", type=int, default=16, help='Dimensionality of the context.')
+    #parser.add_argument("--context_dim", type=int, default=16, help='Dimensionality of the context.')
+
+    parser.add_argument("--context_type", type=str, default='nn', choices=['nn', 'backbone'])
 
     parser.add_argument(
         "--layer_type", type=str, default="concatsquash",
@@ -126,6 +128,7 @@ def parse_args_regression():
     parser.add_argument("--num_blocks", type=int, default=2, help='Number of stacked CNFs.')
     parser.add_argument('--time_length', type=float, default=0.5)
     parser.add_argument('--train_T', type=eval, default=False)
+    parser.add_argument('--add_noise', type=eval, default=False)
     parser.add_argument("--divergence_fn", type=str, default="brute_force", choices=["brute_force", "approximate"])
     parser.add_argument("--nonlinearity", type=str, default="tanh", choices=NONLINEARITIES)
 
