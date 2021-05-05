@@ -116,7 +116,9 @@ def parse_args_regression():
     parser.add_argument("--use_conditional", default=False, type=str2bool,
                         help='If CNF should be conditional')
 
-    parser.add_argument("--context_dim", type=int, default=16, help='Dimensionality of the context.')
+    #parser.add_argument("--context_dim", type=int, default=16, help='Dimensionality of the context.')
+
+    parser.add_argument("--context_type", type=str, default='nn', choices=['nn', 'backbone'])
 
     parser.add_argument(
         "--layer_type", type=str, default="concatsquash",

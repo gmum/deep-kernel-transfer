@@ -108,11 +108,17 @@ def setup_optimizer(model, params):
 
 def setup_model(bb, config, device, params):
     if params.flow:
-        cnf = setup_flow(device, params)
+        if params.context_type == 'backbone':
+            context_dim = bb.output_dim
+        elif params.context_type == 'nn':
+            context_dim = config.nn_config["output_dim"]
+        else:
+            raise ValueError("unknown context type")
+        cnf = setup_flow(device, params, context_dim)
         if params.method == 'DKT':
             model = DKT_flow(bb, device, num_tasks=params.num_tasks, config=config,
                              dataset=params.dataset, cnf=cnf, use_conditional=params.use_conditional,
-                             add_noise=params.add_noise,
+                             add_noise=params.add_noise, context_type=params.context_type,
                              multi_type=params.multi_type)
         else:
             raise ValueError('Unrecognised method')
@@ -127,9 +133,9 @@ def setup_model(bb, config, device, params):
     return model
 
 
-def setup_flow(device, params):
+def setup_flow(device, params, context_dim):
     if params.use_conditional:
-        cnf = build_conditional_cnf(params, params.num_tasks, params.context_dim).to(device)
+        cnf = build_conditional_cnf(params, params.num_tasks, context_dim).to(device)
     else:
         regularization_fns, regularization_coeffs = create_regularization_fns(params)
         cnf = build_model_tabular(params, params.num_tasks, regularization_fns).to(device)

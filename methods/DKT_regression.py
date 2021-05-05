@@ -42,7 +42,7 @@ def get_transforms(model, use_context):
 
 class DKT(nn.Module):
     def __init__(self, backbone, device, num_tasks=1, config=None, dataset='QMUL', cnf=None, use_conditional=False,
-                 add_noise=False, multi_type=2):
+                 add_noise=False, context_type='nn', multi_type=2):
         super(DKT, self).__init__()
         ## GP parameters
         self.feature_extractor = backbone
@@ -53,13 +53,13 @@ class DKT(nn.Module):
         self.cnf = cnf
         self.use_conditional = use_conditional
         self.multi_type = multi_type
+        self.context_type = context_type
         if self.cnf is not None:
             self.is_flow = True
         else:
             self.is_flow = False
         self.add_noise = add_noise
         self.get_model_likelihood_mll()  # Init model, likelihood, and mll
-
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
         if self.dataset == 'QMUL':
@@ -172,16 +172,21 @@ class DKT(nn.Module):
         return mse, new_means
 
     def get_context(self, z):
-        if self.num_tasks == 1:
-            context = self.model.kernel.model(z)
-        else:
-            if self.multi_type == 3:
-                contexts = []
-                for k in range(len(self.model.kernels)):
-                    contexts.append(self.model.kernels[k].model(z))
-                context = sum(contexts)
+        if self.context_type == 'nn':
+            if self.num_tasks == 1:
+                context = self.model.kernel.model(z)
             else:
-                context = self.model.kernels.model(z)
+                if self.multi_type == 3:
+                    contexts = []
+                    for k in range(len(self.model.kernels)):
+                        contexts.append(self.model.kernels[k].model(z))
+                    context = sum(contexts)
+                else:
+                    context = self.model.kernels.model(z)
+        elif self.context_type == 'backbone':
+            context = z
+        else:
+            raise ValueError("unknown context type")
         return context
 
     def apply_flow(self, labels, z):
