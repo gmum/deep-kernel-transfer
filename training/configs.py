@@ -7,7 +7,7 @@ class Config:
         self.data_dir['emnist'] = './filelists/emnist/'
         self.save_dir = args.save_dir
 
-        if self.kernel_type == "nn":
+        if self.kernel_type.startswith("nn"):
             self.nn_config = {}
             if args.dataset == "sines":
                 self.nn_config["input_dim"] = args.output_dim

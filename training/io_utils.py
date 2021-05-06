@@ -82,7 +82,7 @@ def parse_args_regression():
     parser = argparse.ArgumentParser(description='few-shot script regression')
 
     parser.add_argument('--seed', default=0, type=int, help='Seed for Numpy and pyTorch. Default: 0 (None)')
-    parser.add_argument('--model', default='Conv3', choices=["Conv3", "MLP2"], help='model: Conv{3} / MLP{2}')
+    parser.add_argument('--model', default='Conv3', choices=["Conv3", "MLP2", "MLP2P"], help='model: Conv{3} / MLP{2}')
     parser.add_argument('--method', default='DKT', help='DKT / transfer')
     parser.add_argument('--dataset', default='QMUL', help='QMUL / sines')
     parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
@@ -97,7 +97,7 @@ def parse_args_regression():
     parser.add_argument('--noise', default=False, type=str2bool,
                         help='Different phases per each example')
     parser.add_argument('--kernel_type', type=str, default='rbf',
-                        choices=['rbf', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])
+                        choices=['rbf', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn', 'nn2'])
     parser.add_argument('--save_dir', type=str, default='./save/regression')
     parser.add_argument('--num_tasks', type=int, default=1, help="the dimension of the target.")
     parser.add_argument('--multi_type', type=int, choices=[2,3], default=3, help="type of nn multi-kernel, used if num-tasks>1 "

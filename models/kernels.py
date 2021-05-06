@@ -68,43 +68,57 @@ class NNKernel(gpytorch.kernels.Kernel):
                 return out
 
 
-class PositiveLinear(nn.Module):
-    def __init__(self, in_features, out_features):
-        super(PositiveLinear, self).__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.weight = nn.Parameter(torch.Tensor(out_features, in_features))
-        self.reset_parameters()
+class PositiveLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True):
+        super(PositiveLinear, self).__init__(in_features,out_features, bias)
 
     def reset_parameters(self):
-        nn.init.xavier_uniform_(self.weight)
+        super().reset_parameters()
 
     def forward(self, input):
-        w = nn.functional.softplus(self.weight)
-        return nn.functional.linear(input, w)
+        w = nn.functional.sigmoid(self.weight)
+        res = nn.functional.linear(input, w, self.bias)
+        return res
 
+class ScaleLayer(nn.Module):
+
+   def __init__(self, init_value=1e-3):
+       super().__init__()
+       self.scale = nn.Parameter(torch.FloatTensor([init_value]))
+
+   def forward(self, input):
+       return input * self.scale
 
 class NNKernelNoInner(gpytorch.kernels.Kernel):
     def __init__(self, input_dim, num_layers, hidden_dim, flatten=False, **kwargs):
         super(NNKernelNoInner, self).__init__(**kwargs)
 
-        self.input_dim = input_dim*2
+        self.input_dim = input_dim
         self.output_dim = 1
         self.num_layers = num_layers
         self.hidden_dim = hidden_dim
         self.flatten = flatten
+        self.embed = self.create_embedding()
         self.model = self.create_model()
+
+
+
+    def create_embedding(self):
+        embeddings = [nn.Linear(self.input_dim, self.hidden_dim), nn.LeakyReLU(),
+                      nn.Linear(self.hidden_dim, self.hidden_dim)]
+        return nn.Sequential(*embeddings)
 
     def create_model(self):
 
         assert self.num_layers >= 1, "Number of hidden layers must be at least 1"
-        modules = [PositiveLinear(self.input_dim, self.hidden_dim), nn.Sigmoid()]
+        modules = [nn.Linear(self.hidden_dim, self.hidden_dim), nn.LeakyReLU()]
         if self.flatten:
             modules = [nn.Flatten()] + modules
         for i in range(self.num_layers - 1):
-            modules.append(PositiveLinear(self.hidden_dim, self.hidden_dim))
-            modules.append(nn.Sigmoid())
-        modules.append(PositiveLinear(self.hidden_dim, self.output_dim))
+            modules.append(nn.Linear(self.hidden_dim, self.hidden_dim))
+            modules.append(nn.LeakyReLU())
+        modules.append(nn.Linear(self.hidden_dim, self.output_dim))
+        modules.append(nn.Softplus())
 
 
         model = nn.Sequential(*modules)
@@ -140,17 +154,25 @@ class NNKernelNoInner(gpytorch.kernels.Kernel):
         else:
             n = x1.shape[0]
             m = x2.shape[0]
-            out = torch.zeros((n,m), device=x1.get_device())
+            #out = torch.zeros((n,m), device=x1.get_device())
 
-            for i in range(n):
-                for j in range(i+1):
-                    out[i, j] = self.model(torch.cat((x1[i], x2[j]))).view(-1)
-                    if i != j:
-                        out[j, i] = out[i, j]
+            z1 = self.embed(x1)
+            z2 = self.embed(x2)
+
+
+
+            summ = ((z1.unsqueeze(1) + z2.unsqueeze(0))/2).view(n*m, -1)
+
+            out = self.model(summ).view((n,m))
+
+            out = out #+torch.diag(torch.ones(n, device=x1.get_device())*1e-2)
+
 
             #npout = out.cpu().detach().numpy()
+            #print(npout)
             #print(np.linalg.eigvals(npout))
-            #assert np.all(np.linalg.eigvals(npout) +1e-2 >= 0), "not positive"
+            #assert np.allclose(npout, npout.T, 1e-5), "not symmetric"
+            #assert np.all(np.linalg.eigvals(npout) +1e-3 >= 0), "not positive"
             if diag:
                 return torch.diag(out)
             else:

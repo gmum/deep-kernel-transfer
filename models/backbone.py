@@ -123,6 +123,27 @@ class MLP2(nn.Module):
     def forward(self, x):
         return self.model(x)
 
+class PositiveLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True):
+        super(PositiveLinear, self).__init__(in_features,out_features, bias)
+
+    def forward(self, input):
+        w = nn.functional.softplus(self.weight)
+        res = nn.functional.linear(input, w, self.bias)
+        return res
+
+class MLP2P(nn.Module):
+    def __init__(self, input_dim=1, output_dim=1, hidden_dim=40):
+        super(MLP2P, self).__init__()
+        self.hidden_dim = 40
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.model = nn.Sequential(PositiveLinear(input_dim, hidden_dim), nn.Tanh(),
+                                   PositiveLinear(hidden_dim, hidden_dim), nn.Tanh(),
+                                   PositiveLinear(hidden_dim, output_dim))
+
+    def forward(self, x):
+        return self.model(x)
 
 # Simple Conv Block
 class ConvBlock(nn.Module):

@@ -128,10 +128,10 @@ def setup_model(bb, config, device, params):
 
 def setup_flow(device, params):
     if params.use_conditional:
-        cnf = build_conditional_cnf(params, 1, params.context_dim).to(device)
+        cnf = build_conditional_cnf(params, params.num_tasks, params.context_dim).to(device)
     else:
         regularization_fns, regularization_coeffs = create_regularization_fns(params)
-        cnf = build_model_tabular(params, 1, regularization_fns).to(device)
+        cnf = build_model_tabular(params, params.num_tasks, regularization_fns).to(device)
     if params.spectral_norm:
         add_spectral_norm(cnf)
     set_cnf_options(params, cnf)
@@ -141,6 +141,8 @@ def setup_flow(device, params):
 def setup_backbone(device, params):
     if params.model == "MLP2":
         bb = backbone.MLP2(input_dim=1, output_dim=params.output_dim).to(device)
+    elif params.model == "MLP2P":
+        bb = backbone.MLP2P(input_dim=1, output_dim=params.output_dim).to(device)
     elif params.model == "Conv3":
         bb = backbone.Conv3().to(device)
     else:
