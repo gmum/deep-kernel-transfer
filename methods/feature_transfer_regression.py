@@ -51,7 +51,7 @@ class FeatureTransfer(nn.Module):
                                                       shuffle=True)
             batch, batch_labels = next(iter(data_loader))
             batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
-            batch_labels = batch_labels[:, :, 0]
+            batch_labels = batch_labels[:, :, -1]
         else:
             batch, batch_labels = get_batch(train_people)
 
@@ -90,7 +90,7 @@ class FeatureTransfer(nn.Module):
                                                       shuffle=True)
             batch, batch_labels = next(iter(data_loader))
             batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
-            batch_labels = batch_labels[:, :, 0]
+            batch_labels = batch_labels[:, :, -1]
 
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)

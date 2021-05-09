@@ -4,6 +4,8 @@ import gpytorch
 import numpy as np
 import torch
 import torch.nn as nn
+from gpytorch.constraints import GreaterThan
+from gpytorch.priors import UniformPrior
 
 from data.data_generator import SinusoidalDataGenerator, Nasdaq100padding
 from data.qmul_loader import get_batch, train_people, test_people
@@ -127,7 +129,7 @@ class DKT(nn.Module):
                                                       shuffle=True)
             batch, batch_labels = next(iter(data_loader))
             batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
-            batch_labels = batch_labels[:, :, 0].float()
+            batch_labels = batch_labels[:, :, -1].float()
         else:
             batch, batch_labels = get_batch(train_people)
 
@@ -266,14 +268,14 @@ class DKT(nn.Module):
         return x_all, x_support, y_all, y_support
 
     def get_support_query_nasdaq(self, n_support, params):
-        nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True, partition="test",
+        nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True, partition="train",
                                             window=params.update_batch_size * 2,
                                             time_to_predict=params.meta_batch_size * 2)
         data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size * 2,
                                                   shuffle=True)
         batch, batch_labels = next(iter(data_loader))
         inputs = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
-        targets = batch_labels[:, :, 0].float()
+        targets = batch_labels[:, :, -1].float()
 
         # if self.num_tasks == 1:
         #     inputs = torch.from_numpy(batch)

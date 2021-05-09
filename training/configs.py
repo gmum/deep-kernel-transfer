@@ -5,7 +5,7 @@ class Config:
         self.data_dir['miniImagenet'] = './filelists/miniImagenet/'
         self.data_dir['omniglot'] = './filelists/omniglot/'
         self.data_dir['emnist'] = './filelists/emnist/'
-        self.data_dir['nasdaq'] = './filelists/Nasdaq_100/nasdaq100_padding.csv'
+        self.data_dir['nasdaq'] = './filelists/Nasdaq_100/A001SB1_1.csv'
         self.save_dir = args.save_dir
 
         if self.kernel_type == "nn":

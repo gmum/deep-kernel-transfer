@@ -85,7 +85,7 @@ class SinusoidalDataGenerator(object):
 class Nasdaq100padding(Dataset):
     """Nasdaq100padding dataset."""
 
-    def __init__(self, directory="../filelists/Nasdaq_100/nasdaq100_padding.csv", normalize=None, partition="train",
+    def __init__(self, directory="../filelists/Nasdaq_100/A001SB1_1.csv", normalize=None, partition="train",
                  window=10,
                  time_to_predict=10):
         self.df = pd.read_csv(directory)
@@ -99,7 +99,9 @@ class Nasdaq100padding(Dataset):
             self.df = pd.DataFrame(x_scaled, columns=self.df.columns)
         x_train, x_test = train_test_split(self.df, test_size=0.2, random_state=42, shuffle=False)
         self.df_test = pd.DataFrame(x_test, columns=self.df.columns).reset_index(drop=True)
+        self.df_test = self.df_test.fillna(-1)
         self.df_train = pd.DataFrame(x_train, columns=self.df.columns).reset_index(drop=True)
+        self.df_train = self.df_train.fillna(-1)
 
     def __len__(self):
         if self.partition == "train":
@@ -113,9 +115,9 @@ class Nasdaq100padding(Dataset):
         begin = idx
         end_of_x = idx + self.window
         if self.partition == "train":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train.loc[begin:end_of_x - 1].values
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train.iloc[list(range(begin, end_of_x))].values
         if self.partition == "test":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test.loc[begin:end_of_x - 1].values
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test.iloc[list(range(begin, end_of_x))].values
         else:
             raise NotImplementedError
 
@@ -123,10 +125,11 @@ class Nasdaq100padding(Dataset):
 # example
 if __name__ == '__main__':
     freeze_support()
-    nasdaq100padding = Nasdaq100padding(normalize=False, partition="test", window=10, time_to_predict=10)
+    nasdaq100padding = Nasdaq100padding(normalize=True, partition="test", window=10, time_to_predict=10)
+    print(nasdaq100padding.__getitem__(1))
     dataset_loader = torch.utils.data.DataLoader(nasdaq100padding,
                                                  batch_size=4, shuffle=True)
 
     x, y = next(iter(dataset_loader))
     print(x.reshape(4, 10, 1))
-    print(y[:, :, 0])
+    print(y[:, :, -1])
