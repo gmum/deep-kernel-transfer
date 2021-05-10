@@ -117,6 +117,7 @@ class DKT(nn.Module):
                 batch_labels = torch.from_numpy(batch_labels)
 
         batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
+        # print(batch.shape, batch_labels.shape)
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
             z = self.feature_extractor(inputs)
@@ -125,6 +126,9 @@ class DKT(nn.Module):
                 delta_log_py, labels, y = self.apply_flow(labels, z)
             else:
                 y = labels
+            #print(z)
+            z=torch.nn.functional.normalize(z,dim=0)
+            #print(z)
             self.model.set_train_data(inputs=z, targets=y)
             predictions = self.model(z)
             loss = -self.mll(predictions, self.model.train_targets)
@@ -162,6 +166,7 @@ class DKT(nn.Module):
     def apply_flow(self, labels, z):
         if self.num_tasks == 1:
             labels = labels.unsqueeze(1)
+        print(labels.size())
         if self.use_conditional:
             y, delta_log_py = self.cnf(labels, self.model.kernel.model(z),
                                        torch.zeros(labels.size(0), 1).to(labels))
@@ -190,6 +195,7 @@ class DKT(nn.Module):
                 _, labels, y_support = self.apply_flow(labels, z_support)
         else:
             y_support = labels
+        z_support = torch.nn.functional.normalize(z_support, dim=0)
 
 
         self.model.set_train_data(inputs=z_support, targets=y_support, strict=False)
@@ -200,6 +206,7 @@ class DKT(nn.Module):
 
         with torch.no_grad():
             z_query = self.feature_extractor(x_all[n]).detach()
+            z_query = torch.nn.functional.normalize(z_query, dim=0)
             pred = self.likelihood(self.model(z_query))
             if self.is_flow:
                 delta_log_py, _, y = self.apply_flow(y_all[n], z_query)
@@ -207,6 +214,7 @@ class DKT(nn.Module):
                 NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
 
             else:
+                print(pred.mean, pred.stddev)
                 log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
                 NLL = -1.0 * torch.mean(log_py)
 
@@ -288,6 +296,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
             self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=ard_num_dims)
         elif kernel == "nn2":
             self.kernel = NNKernelNoInner(input_dim=config.nn_config["input_dim"],
+                                          output_dim=config.nn_config["output_dim"],
                                     num_layers=config.nn_config["num_layers"],
                                     hidden_dim=config.nn_config["hidden_dim"])
 

@@ -67,60 +67,47 @@ class NNKernel(gpytorch.kernels.Kernel):
             else:
                 return out
 
+class NNKernelMatrixInner(NNKernel):
+    def __init__(self, input_dim, output_dim, num_layers, hidden_dim, flatten=False, **kwargs):
+        super(NNKernelMatrixInner, self).__init__(input_dim, output_dim, num_layers, hidden_dim, flatten=flatten, **kwargs)
+        self.M = torch.nn.Parameter(torch.eye(hidden_dim)+1e-4*torch.randn((hidden_dim,hidden_dim)),requires_grad=True)
 
-class PositiveLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True):
-        super(PositiveLinear, self).__init__(in_features,out_features, bias)
+    def forward(self, x1, x2, diag=False, last_dim_is_batch=False, full_covar=True, **params):
+        if last_dim_is_batch:
+            raise NotImplementedError()
+        else:
 
-    def reset_parameters(self):
-        super().reset_parameters()
+            z1 = self.model(x1)
+            z2 = self.model(x2)
 
-    def forward(self, input):
-        w = nn.functional.sigmoid(self.weight)
-        res = nn.functional.linear(input, w, self.bias)
-        return res
+            out = torch.matmul(torch.matmul(z1,self.M),z2.T)
 
-class ScaleLayer(nn.Module):
-
-   def __init__(self, init_value=1e-3):
-       super().__init__()
-       self.scale = nn.Parameter(torch.FloatTensor([init_value]))
-
-   def forward(self, input):
-       return input * self.scale
-
-class NNKernelNoInner(gpytorch.kernels.Kernel):
-    def __init__(self, input_dim, num_layers, hidden_dim, flatten=False, **kwargs):
-        super(NNKernelNoInner, self).__init__(**kwargs)
-
-        self.input_dim = input_dim
-        self.output_dim = 1
-        self.num_layers = num_layers
-        self.hidden_dim = hidden_dim
-        self.flatten = flatten
-        self.embed = self.create_embedding()
-        self.model = self.create_model()
+            if diag:
+                return torch.diag(out)
+            else:
+                return out
 
 
+class NNKernelNoInner(NNKernel):
+    def __init__(self, input_dim, output_dim, num_layers, hidden_dim, flatten=False, **kwargs):
+        super(NNKernelNoInner, self).__init__(input_dim, output_dim, num_layers, hidden_dim, flatten=flatten, **kwargs)
+        self.processing_model = self.build_processing_network()
 
-    def create_embedding(self):
-        embeddings = [nn.Linear(self.input_dim, self.hidden_dim), nn.LeakyReLU(),
-                      nn.Linear(self.hidden_dim, self.hidden_dim)]
-        return nn.Sequential(*embeddings)
-
-    def create_model(self):
-
-        assert self.num_layers >= 1, "Number of hidden layers must be at least 1"
-        modules = [nn.Linear(self.hidden_dim, self.hidden_dim), nn.LeakyReLU()]
-        if self.flatten:
-            modules = [nn.Flatten()] + modules
-        for i in range(self.num_layers - 1):
-            modules.append(nn.Linear(self.hidden_dim, self.hidden_dim))
-            modules.append(nn.LeakyReLU())
-        modules.append(nn.Linear(self.hidden_dim, self.output_dim))
-        modules.append(nn.Softplus())
+    def build_processing_network(self):
 
 
+        modules = [nn.Conv2d(in_channels=1, out_channels=16, kernel_size=3, stride=1), nn.ReLU(),
+                   nn.Conv2d(in_channels=16, out_channels=16, kernel_size=3, stride=1), nn.ReLU(),
+                   nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=2), nn.ReLU(),
+                   nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1), nn.ReLU(),
+                   nn.Conv2d(in_channels=32, out_channels=64, kernel_size=1, stride=2), nn.ReLU(),
+                   nn.Flatten()]
+        # if self.flatten:
+        #     modules = [nn.Flatten()] + modules
+        # for i in range(self.num_layers - 1):
+        #     modules.append(nn.Linear(self.hidden_dim, self.hidden_dim))
+        #     modules.append(nn.LeakyReLU())
+        # modules.append(nn.Linear(self.hidden_dim, self.output_dim))
         model = nn.Sequential(*modules)
         return model
 
@@ -156,16 +143,15 @@ class NNKernelNoInner(gpytorch.kernels.Kernel):
             m = x2.shape[0]
             #out = torch.zeros((n,m), device=x1.get_device())
 
-            z1 = self.embed(x1)
-            z2 = self.embed(x2)
+            z1 = self.model(x1)
+            z2 = self.model(x2)
 
 
+            summ = ((z1.unsqueeze(1) + z2.unsqueeze(0))/2).view(1,1,n*m, -1)
+            out1  = self.processing_model(summ)
+            print(out1.shape, n, m)
 
-            summ = ((z1.unsqueeze(1) + z2.unsqueeze(0))/2).view(n*m, -1)
-
-            out = self.model(summ).view((n,m))
-
-            out = out #+torch.diag(torch.ones(n, device=x1.get_device())*1e-2)
+            out = torch.matmul(z1, z2.T)
 
 
             #npout = out.cpu().detach().numpy()
@@ -177,6 +163,29 @@ class NNKernelNoInner(gpytorch.kernels.Kernel):
                 return torch.diag(out)
             else:
                 return out
+
+
+
+class PositiveLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True):
+        super(PositiveLinear, self).__init__(in_features,out_features, bias)
+
+    def reset_parameters(self):
+        super().reset_parameters()
+
+    def forward(self, input):
+        w = nn.functional.sigmoid(self.weight)
+        res = nn.functional.linear(input, w, self.bias)
+        return res
+
+class ScaleLayer(nn.Module):
+
+   def __init__(self, init_value=1e-3):
+       super().__init__()
+       self.scale = nn.Parameter(torch.FloatTensor([init_value]))
+
+   def forward(self, input):
+       return input * self.scale
 
 
 class MultiNNKernel(gpytorch.kernels.Kernel):
