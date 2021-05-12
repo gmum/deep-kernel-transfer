@@ -85,7 +85,7 @@ class SinusoidalDataGenerator(object):
 class Nasdaq100padding(Dataset):
     """Nasdaq100padding dataset."""
 
-    def __init__(self, directory="../filelists/Nasdaq_100/A001SB1_1.csv", normalize=None, partition="train",
+    def __init__(self, directory="../filelists/Nasdaq_100/nasdaq100_padding.csv", normalize=None, partition="train",
                  window=10,
                  time_to_predict=10):
         self.df = pd.read_csv(directory)
