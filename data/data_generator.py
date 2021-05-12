@@ -97,7 +97,8 @@ class Nasdaq100padding(Dataset):
             min_max_scaler = preprocessing.MinMaxScaler()
             x_scaled = min_max_scaler.fit_transform(self.df)
             self.df = pd.DataFrame(x_scaled, columns=self.df.columns)
-        x_train, x_test = train_test_split(self.df, test_size=0.2, random_state=42, shuffle=False)
+        x_train, x_test = train_test_split(self.df, test_size=0.01, random_state=42,
+                                           shuffle=False)  # it should can be change this is just for 'in range' experiments
         self.df_test = pd.DataFrame(x_test, columns=self.df.columns).reset_index(drop=True)
         self.df_test = self.df_test.fillna(-1)
         self.df_train = pd.DataFrame(x_train, columns=self.df.columns).reset_index(drop=True)
@@ -105,19 +106,21 @@ class Nasdaq100padding(Dataset):
 
     def __len__(self):
         if self.partition == "train":
-            return len(self.df_train) - self.window - self.time_to_predict
+            return len(self.df_train) - 5 * self.window - self.time_to_predict
         if self.partition == "test":
-            return len(self.df_test) - self.window - self.time_to_predict
+            return len(self.df_test) - 5 * self.window - self.time_to_predict
         else:
             raise NotImplementedError
 
     def __getitem__(self, idx):
         begin = idx
-        end_of_x = idx + self.window
+        end_of_x = idx + 5 * self.window
         if self.partition == "train":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train.iloc[list(range(begin, end_of_x))].values
+            return torch.FloatTensor(list(range(begin, end_of_x, 5))), self.df_train.iloc[
+                list(range(begin, end_of_x, 5))].values
         if self.partition == "test":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test.iloc[list(range(begin, end_of_x))].values
+            return torch.FloatTensor(list(range(begin, end_of_x, 5))), self.df_test.iloc[
+                list(range(begin, end_of_x, 5))].values
         else:
             raise NotImplementedError
 
