@@ -28,7 +28,7 @@ from train_misc import add_spectral_norm
 from train_misc import create_regularization_fns
 from train_misc import build_model_tabular, build_conditional_cnf
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 
 def _set_seed(seed, verbose=True):
     if(seed!=0):

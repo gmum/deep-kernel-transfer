@@ -26,7 +26,6 @@ def divergence_bf(dx, y, **unused_kwargs):
 
 def _get_minibatch_jacobian(y, x):
     """Computes the Jacobian of y wrt x assuming minibatch-mode.
-
     Args:
       y: (N, ...) with a total of D_y elements in ...
       x: (N, ...) with a total of D_x elements in ...
@@ -98,7 +97,7 @@ class ODEnet(nn.Module):
     """
 
     def __init__(
-        self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", num_squeeze=0
+            self, hidden_dims, input_shape, strides, conv, layer_type="concat", nonlinearity="softplus", num_squeeze=0
     ):
         super(ODEnet, self).__init__()
         self.num_squeeze = num_squeeze

@@ -186,6 +186,7 @@ class DKT(MetaTemplate):
                 target_list.append(target.cuda())
 
                 target_flow = target.unsqueeze(1).cuda()
+                target_flow = target_flow + 0.1*torch.randn(target_flow.size()).to(target_flow)
 
                 if self.use_conditional:
                     y, delta_log_py = self.cnf(target_flow, self.model.models[way].kernel.model(z_train),
@@ -223,7 +224,7 @@ class DKT(MetaTemplate):
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
             #TODO - consider if we should use mean or sum function
-            loss = -self.mll(output, self.model.train_targets) + sum(flow_delta_list)
+            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.stack(flow_delta_list), dim=0)
             # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_delta_list))
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
@@ -420,7 +421,7 @@ class DKT(MetaTemplate):
             optimizer.zero_grad()
             output = self.model(*self.model.train_inputs)
             # TODO - consider the best loss
-            loss = -self.mll(output, self.model.train_targets) + sum(flow_delta_list)
+            loss = -self.mll(output, self.model.train_targets) + torch.mean(torch.stack(flow_delta_list), dim=0)
             # loss = -self.mll(output, self.model.train_targets) + torch.sum(torch.tensor(flow_delta_list))
             # loss = -self.mll(output, self.model.train_targets)
             loss.backward()
