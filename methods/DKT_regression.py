@@ -4,11 +4,13 @@ import gpytorch
 import numpy as np
 import torch
 import torch.nn as nn
+from gpytorch.constraints import GreaterThan
+from gpytorch.priors import UniformPrior
 
-from data.data_generator import SinusoidalDataGenerator
+from data.data_generator import SinusoidalDataGenerator, Nasdaq100padding
 from data.qmul_loader import get_batch, train_people, test_people
-from models.kernels import NNKernel, MultiNNKernel, NNKernelNoInner
-from training.utils import normal_logprob, prepare_for_plots, plot_histograms
+from models.kernels import NNKernel, MultiNNKernel
+from training.utils import prepare_for_plots, plot_histograms
 
 
 def get_transforms(model, use_context):
@@ -65,7 +67,14 @@ class DKT(nn.Module):
         if self.dataset == 'QMUL':
             if train_x is None: train_x = torch.ones(19, 2916).to(self.device)
             if train_y is None: train_y = torch.ones(19).to(self.device)
-        else:
+        elif self.dataset == "sines":
+            if self.num_tasks == 1:
+                if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
+                if train_y is None: train_y = torch.ones(10).to(self.device)
+            else:
+                if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
+                if train_y is None: train_y = torch.ones(10, self.num_tasks).to(self.device)
+        elif self.dataset == "nasdaq":
             if self.num_tasks == 1:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
                 if train_y is None: train_y = torch.ones(10).to(self.device)
@@ -74,7 +83,17 @@ class DKT(nn.Module):
                 if train_y is None: train_y = torch.ones(10, self.num_tasks).to(self.device)
 
         if self.num_tasks == 1:
-            likelihood = gpytorch.likelihoods.GaussianLikelihood()
+            noise_prior = UniformPrior(0, 1)
+            MIN_INFERRED_NOISE_LEVEL = 1e-8
+            likelihood = gpytorch.likelihoods.GaussianLikelihood(
+                noise_prior=noise_prior,
+                noise_constraint=GreaterThan(
+                    MIN_INFERRED_NOISE_LEVEL
+                ),
+            )
+            # noise fixed to 0s'
+            # likelihood = gpytorch.likelihoods.FixedNoiseGaussianLikelihood(noise=torch.zeros(10),
+            #                                                                learn_additional_noise=False)
             model = ExactGPLayer(dataset=self.dataset, config=self.config, train_x=train_x,
                                  train_y=train_y, likelihood=likelihood, kernel=self.config.kernel_type)
         else:
@@ -100,59 +119,71 @@ class DKT(nn.Module):
         # print("NUM KERNEL PARAMS {}".format(sum([p.numel() for p in self.model.parameters() if p.requires_grad])))
         # print("NUM TRANSFORM PARAMS {}".format(sum([p.numel() for p in self.feature_extractor.parameters() if p.requires_grad])))
 
-        self.model.train()
-        self.feature_extractor.train()
-        self.likelihood.train()
-        if self.is_flow:
-            self.cnf.train()
-
-        if self.dataset != "sines":
-            batch, batch_labels = get_batch(train_people)
-        else:
-            batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
-                                                                      params.meta_batch_size,
-                                                                      params.num_tasks,
-                                                                      params.multidimensional_amp,
-                                                                      params.multidimensional_phase,
-                                                                      params.noise).generate()
-
-            if self.num_tasks == 1:
-                batch = torch.from_numpy(batch)
-                batch_labels = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
-            else:
-                batch = torch.from_numpy(batch)
-                batch_labels = torch.from_numpy(batch_labels)
-
-        batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
-        # print(batch.shape, batch_labels.shape)
-        for inputs, labels in zip(batch, batch_labels):
-            optimizer.zero_grad()
-            z = self.feature_extractor(inputs)
-            if self.add_noise:
-                labels = labels + torch.normal(0, 0.1, size=labels.shape).to(labels)
+        # fighting with numerical problems with cholesky decomposition
+        with gpytorch.settings.cholesky_jitter(1e-6, 1e-8):
+            self.model.train()
+            self.feature_extractor.train()
+            self.likelihood.train()
             if self.is_flow:
-                delta_log_py, labels, y = self.apply_flow(labels, z)
+                self.cnf.train()
+
+            if self.dataset == "sines":
+                batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
+                                                                          params.meta_batch_size,
+                                                                          params.num_tasks,
+                                                                          params.multidimensional_amp,
+                                                                          params.multidimensional_phase,
+                                                                          params.noise).generate()
+
+                if self.num_tasks == 1:
+                    batch = torch.from_numpy(batch)
+                    batch_labels = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
+                else:
+                    batch = torch.from_numpy(batch)
+                    batch_labels = torch.from_numpy(batch_labels)
+            elif self.dataset == "nasdaq":
+                nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
+                                                    partition="train", window=params.update_batch_size * 2,
+                                                    time_to_predict=params.meta_batch_size * 2)
+                data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size * 2,
+                                                          shuffle=True)
+                batch, batch_labels = next(iter(data_loader))
+                batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
+                batch_labels = batch_labels[:, :, -1].float()
             else:
-                y = labels
-            self.model.set_train_data(inputs=z, targets=y)
-            predictions = self.model(z)
-            loss = -self.mll(predictions, self.model.train_targets)
-            if self.is_flow:
-                loss = loss + torch.mean(delta_log_py)
-            loss.backward()
-            optimizer.step()
+                batch, batch_labels = get_batch(train_people)
 
-            mse, _ = self.compute_mse(labels, predictions, z)
+            batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
+            # print(batch.shape, batch_labels.shape)
+            for inputs, labels in zip(batch, batch_labels):
+                optimizer.zero_grad()
+                z = self.feature_extractor(inputs)
+                if self.add_noise:
+                    labels = labels + torch.normal(0, 0.1, size=labels.shape).to(labels)
+                if self.is_flow:
+                    delta_log_py, labels, y = self.apply_flow(labels, z)
+                else:
+                    y = labels
+                self.model.set_train_data(inputs=z, targets=y)
+                predictions = self.model(z)
+                loss = -self.mll(predictions, self.model.train_targets)
+                if self.is_flow:
+                    loss = loss + torch.mean(delta_log_py)
+                loss.backward()
+                optimizer.step()
 
-            if epoch % 10 == 0:
-                print('[%d] - Loss: %.3f  MSE: %.3f noise: %.3f' % (
-                    epoch, loss.item(), mse.item(),
-                    self.model.likelihood.noise.item()
-                ))
-                results_logger.log("epoch", epoch)
-                results_logger.log("loss", loss.item())
-                results_logger.log("MSE", mse.item())
-                results_logger.log("noise", self.model.likelihood.noise.item())
+                mse, _ = self.compute_mse(labels, predictions, z)
+
+                if epoch % 10 == 0:
+                    print('[%d] - Loss: %.3f  MSE: %.3f noise: %.3f' % (
+                        epoch, loss.item(), mse.item(),
+                        self.model.likelihood.noise[0].item()
+                    ))
+                    results_logger.log("epoch", epoch)
+                    results_logger.log("loss", loss.item())
+                    results_logger.log("MSE", mse.item())
+                    results_logger.log("noise", self.model.likelihood.noise[0].item())
+            return loss.item()
 
     def compute_mse(self, labels, predictions, z):
         if self.is_flow:
@@ -201,10 +232,12 @@ class DKT(nn.Module):
         return delta_log_py, labels, y
 
     def test_loop(self, n_support, params=None, save_dir=None):
-        if params is None or self.dataset != "sines":
-            x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
-        elif self.dataset == "sines":
+        if self.dataset == "sines":
             x_all, x_support, y_all, y_support = self.get_support_query_sines(n_support, params)
+        elif self.dataset == "nasdaq":
+            x_all, x_support, y_all, y_support = self.get_support_query_nasdaq(n_support, params)
+        elif params is None:
+            x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
         else:
             raise ValueError("unknown dataset")
 
@@ -247,12 +280,12 @@ class DKT(nn.Module):
                 delta_log_py, _, y = self.apply_flow(y_all[n], z_query)
                 log_py = -self.mll(predictions_query, y.squeeze())
                 NLL = log_py + torch.mean(delta_log_py.squeeze())
-                #log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
-                #NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
+                # log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
+                # NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
             else:
                 NLL = -self.mll(predictions_query, y_all[n])
-                #log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
-                #NLL = -1.0 * torch.mean(log_py)
+                # log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
+                # NLL = -1.0 * torch.mean(log_py)
             if save_dir is not None and self.num_tasks == 1:
                 samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
                                                                                    sample_fn, context, new_means)
@@ -290,7 +323,33 @@ class DKT(nn.Module):
         else:
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)
+
         support_ind = list(np.random.choice(list(range(10)), replace=False, size=n_support))
+        query_ind = [i for i in range(10) if i not in support_ind]
+        x_all = inputs.to(self.device)
+        y_all = targets.to(self.device)
+        x_support = inputs[:, support_ind, :].to(self.device)
+        y_support = targets[:, support_ind].to(self.device)
+        return x_all, x_support, y_all, y_support
+
+    def get_support_query_nasdaq(self, n_support, params):
+        nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True, partition="train",
+                                            window=params.update_batch_size * 2,
+                                            time_to_predict=params.meta_batch_size * 2)
+        data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size * 2,
+                                                  shuffle=True)
+        batch, batch_labels = next(iter(data_loader))
+        inputs = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
+        targets = batch_labels[:, :, -1].float()
+
+        # if self.num_tasks == 1:
+        #     inputs = torch.from_numpy(batch)
+        #     targets = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
+        # else:
+        #     inputs = torch.from_numpy(batch)
+        #     targets = torch.from_numpy(batch_labels)
+
+        support_ind = list(np.random.choice(list(range(10)), replace=True, size=n_support))
         query_ind = [i for i in range(10) if i not in support_ind]
         x_all = inputs.to(self.device)
         y_all = targets.to(self.device)
@@ -332,6 +391,8 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         elif kernel == 'spectral':
             if self.dataset == "sines":
                 ard_num_dims = 1
+            elif self.dataset == "nasdaq":
+                ard_num_dims = 1
             else:
                 ard_num_dims = 2916
             self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=ard_num_dims)
@@ -341,9 +402,9 @@ class ExactGPLayer(gpytorch.models.ExactGP):
             #                        hidden_dim=config.nn_config["hidden_dim"])
 
             self.kernel = NNKernel(input_dim=config.nn_config["input_dim"],
-                               output_dim=config.nn_config["output_dim"],
-                               num_layers=config.nn_config["num_layers"],
-                               hidden_dim=config.nn_config["hidden_dim"])
+                                   output_dim=config.nn_config["output_dim"],
+                                   num_layers=config.nn_config["num_layers"],
+                                   hidden_dim=config.nn_config["hidden_dim"])
 
             self.covar_module = self.kernel
         else:
@@ -366,18 +427,18 @@ class MultitaskExactGPLayer(gpytorch.models.ExactGP):
         if kernel == "nn":
             if multi_type == 2:
                 self.kernels = NNKernel(input_dim=config.nn_config["input_dim"],
-                                   output_dim=config.nn_config["output_dim"],
-                                   num_layers=config.nn_config["num_layers"],
-                                   hidden_dim=config.nn_config["hidden_dim"])
+                                        output_dim=config.nn_config["output_dim"],
+                                        num_layers=config.nn_config["num_layers"],
+                                        hidden_dim=config.nn_config["hidden_dim"])
 
                 self.covar_module = gpytorch.kernels.MultitaskKernel(self.kernels, num_tasks)
             elif multi_type == 3:
                 self.kernels = []
                 for i in range(num_tasks):
                     self.kernels.append(NNKernel(input_dim=config.nn_config["input_dim"],
-                                            output_dim=config.nn_config["output_dim"],
-                                            num_layers=config.nn_config["num_layers"],
-                                            hidden_dim=config.nn_config["hidden_dim"]))
+                                                 output_dim=config.nn_config["output_dim"],
+                                                 num_layers=config.nn_config["num_layers"],
+                                                 hidden_dim=config.nn_config["hidden_dim"]))
                 self.covar_module = MultiNNKernel(num_tasks, self.kernels)
             else:
                 raise ValueError("Unsupported multi kernel type {}".format(multi_type))

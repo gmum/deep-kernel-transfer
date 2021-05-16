@@ -4,7 +4,7 @@ import os
 import numpy as np
 import torch
 
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, ReduceLROnPlateau
 from methods.DKT_regression import DKT as DKT_flow
 from methods.feature_transfer_regression import FeatureTransfer
 from models import backbone

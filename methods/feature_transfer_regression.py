@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from data.data_generator import SinusoidalDataGenerator
+from data.data_generator import SinusoidalDataGenerator, Nasdaq100padding
 from data.qmul_loader import get_batch, train_people, test_people
 
 
@@ -34,18 +34,26 @@ class FeatureTransfer(nn.Module):
         self.device = device
 
     def train_loop(self, epoch, optimizer, params, results_logger):
-        if params.dataset != "sines":
-            batch, batch_labels = get_batch(train_people)
-        else:
+        if params.dataset == "sines":
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
                                                                       params.meta_batch_size,
                                                                       params.num_tasks,
                                                                       params.multidimensional_amp,
                                                                       params.multidimensional_phase,
                                                                       params.noise).generate()
-
             batch = torch.from_numpy(batch)
             batch_labels = torch.from_numpy(batch_labels)
+        elif params.dataset == "nasdaq":
+            nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
+                                                partition="train", window=params.update_batch_size * 2,
+                                                time_to_predict=params.meta_batch_size * 2)
+            data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size * 2,
+                                                      shuffle=True)
+            batch, batch_labels = next(iter(data_loader))
+            batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
+            batch_labels = batch_labels[:, :, -1]
+        else:
+            batch, batch_labels = get_batch(train_people)
 
         batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
 
@@ -64,9 +72,7 @@ class FeatureTransfer(nn.Module):
                 results_logger.log("loss", loss.item())
 
     def test_loop(self, n_support, optimizer, params):  # we need optimizer to take one gradient step
-        if params.dataset != "sines":
-            inputs, targets = get_batch(train_people)
-        else:
+        if params.dataset == "sines":
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
                                                                       params.meta_batch_size,
                                                                       params.num_tasks,
@@ -76,6 +82,20 @@ class FeatureTransfer(nn.Module):
 
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)
+        elif params.dataset == "nasdaq":
+            nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
+                                                partition="test", window=params.update_batch_size * 2,
+                                                time_to_predict=params.meta_batch_size * 2)
+            data_loader = torch.utils.data.DataLoader(nasdaq100padding, batch_size=params.update_batch_size * 2,
+                                                      shuffle=True)
+            batch, batch_labels = next(iter(data_loader))
+            batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
+            batch_labels = batch_labels[:, :, -1]
+
+            inputs = torch.from_numpy(batch)
+            targets = torch.from_numpy(batch_labels)
+        else:
+            inputs, targets = get_batch(train_people)
 
         inputs, targets = inputs.to(self.device), targets.to(self.device)
 
