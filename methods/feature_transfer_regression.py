@@ -38,11 +38,10 @@ class FeatureTransfer(nn.Module):
             batch, batch_labels = get_batch(train_people)
         else:
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
-                                                                      params.meta_batch_size,
-                                                                      params.num_tasks,
+                                                                      params.meta_batch_size, params.num_tasks,
                                                                       params.multidimensional_amp,
-                                                                      params.multidimensional_phase,
-                                                                      params.noise).generate()
+                                                                      params.multidimensional_phase, params.noise,
+                                                                      params.out_of_range).generate()
 
             batch = torch.from_numpy(batch)
             batch_labels = torch.from_numpy(batch_labels)
@@ -68,11 +67,10 @@ class FeatureTransfer(nn.Module):
             inputs, targets = get_batch(train_people)
         else:
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
-                                                                      params.meta_batch_size,
-                                                                      params.num_tasks,
+                                                                      params.meta_batch_size, params.num_tasks,
                                                                       params.multidimensional_amp,
-                                                                      params.multidimensional_phase,
-                                                                      params.noise).generate()
+                                                                      params.multidimensional_phase, params.noise,
+                                                                      params.out_of_range).generate()
 
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)

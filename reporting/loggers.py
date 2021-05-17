@@ -30,6 +30,8 @@ class ResultsLogger:
 
     def save(self):
         suffix = "test_results.npy" if self.params.test else "train_results.npy"
+        if self.params.out_of_range:
+            suffix="outr_{}".format(suffix)
         save_file = '%s/checkpoints/%s/%s_%s_%s' % (
             self.params.save_dir, self.params.dataset, self.params.model, self.params.method, suffix)
         np.save(save_file, self.local_logger.results_dict)

@@ -12,7 +12,7 @@ class SinusoidalDataGenerator(object):
     """
 
     def __init__(self, num_samples_per_class, batch_size, output_dim=1, multidimensional_amp=False,
-                 multidimensional_phase=True, gaussian_noise=True):
+                 multidimensional_phase=True, noise=True, out_of_range=False):
         """
         Args:
             num_samples_per_class: num samples to generate per class in one batch
@@ -26,11 +26,14 @@ class SinusoidalDataGenerator(object):
         self.amp_range = [0.1, 5.0]
         self.phase_range = [0, np.pi]
         self.input_range = [-5.0, 5.0]
+        if out_of_range:
+            self.input_range = [-5.0, 10.0]
         self.dim_input = INPUT_DIM
         self.dim_output = output_dim
         self.multidimensional_amp = multidimensional_amp
         self.multidimensional_phase = multidimensional_phase
-        self.gaussian_noise = gaussian_noise
+        self.noise = noise
+        self.split_intervals = [(-5.0, -2.5), (-2.5, 0.0), (0.0, 2.5), (2.5, 5.0)]
 
     def generate_sinusoid_batch(self, input_idx=None):
         # input_idx is used during qualitative testing --the number of examples used for the grad update
@@ -57,8 +60,13 @@ class SinusoidalDataGenerator(object):
             # ...
             phase = np.random.uniform(self.phase_range[0], self.phase_range[1], [self.batch_size])
 
-        if self.gaussian_noise is True:
+        if self.noise == "gaussian":
             noise = np.random.normal(0, 0.1, [self.batch_size, self.num_samples_per_class, self.dim_output])
+        elif self.noise == "heterogeneous":
+            noise = [np.random.normal(0, 0.1, [self.batch_size, self.num_samples_per_class, self.dim_output]),
+                          np.random.normal(0, 0.2, [self.batch_size, self.num_samples_per_class, self.dim_output]),
+                          np.random.uniform(-0.2, 0.2, [self.batch_size, self.num_samples_per_class, self.dim_output]),
+                          np.random.normal(-0.1, 0.1, [self.batch_size, self.num_samples_per_class, self.dim_output])]
         else:
             noise = np.zeros([self.batch_size, self.num_samples_per_class, self.dim_output])
 
@@ -70,6 +78,14 @@ class SinusoidalDataGenerator(object):
             if input_idx is not None:
                 init_inputs[:, input_idx:, 0] = np.linspace(self.input_range[0], self.input_range[1],
                                                             num=self.num_samples_per_class - input_idx, retstep=False)
-            outputs[func] = amp[func] * np.sin(init_inputs[func] - phase[func]) + noise[func]
+
+
+            outputs[func] = amp[func] * np.sin(init_inputs[func] - phase[func])
+            if self.noise == "heterogeneous":
+                for i, s in enumerate(self.split_intervals):
+                    mask = (init_inputs[func]>=s[0]) & (init_inputs[func]<s[1])
+                    outputs[func][mask]=outputs[func][mask]+noise[i][func][mask]
+            else:
+                outputs[func] = outputs[func] + noise[func]
         return init_inputs.astype(np.float32), outputs.astype(np.float32), amp.astype(np.float32), phase.astype(
             np.float32)

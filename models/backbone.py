@@ -111,14 +111,13 @@ class BatchNorm2d_fw(nn.BatchNorm2d):  # used in MAML to forward input with fast
 
 
 class MLP2(nn.Module):
-    def __init__(self, input_dim=1, output_dim=1, hidden_dim=40):
+    def __init__(self, input_dim=1, output_dim=40, hidden_dim=40):
         super(MLP2, self).__init__()
         self.hidden_dim = 40
         self.input_dim = input_dim
         self.output_dim = output_dim
         self.model = nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU(),
-                                   nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-                                   nn.Linear(hidden_dim, output_dim))
+                                   nn.Linear(hidden_dim, output_dim), nn.ReLU())
 
     def forward(self, x):
         return self.model(x)

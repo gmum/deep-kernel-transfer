@@ -110,11 +110,10 @@ class DKT(nn.Module):
             batch, batch_labels = get_batch(train_people)
         else:
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
-                                                                      params.meta_batch_size,
-                                                                      params.num_tasks,
+                                                                      params.meta_batch_size, params.num_tasks,
                                                                       params.multidimensional_amp,
-                                                                      params.multidimensional_phase,
-                                                                      params.noise).generate()
+                                                                      params.multidimensional_phase, params.noise,
+                                                                      params.out_of_range).generate()
 
             if self.num_tasks == 1:
                 batch = torch.from_numpy(batch)
@@ -253,10 +252,10 @@ class DKT(nn.Module):
                 NLL = -self.mll(predictions_query, y_all[n])
                 #log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
                 #NLL = -1.0 * torch.mean(log_py)
-            if save_dir is not None and self.num_tasks == 1:
-                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
-                                                                                   sample_fn, context, new_means)
-                plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
+            # if save_dir is not None and self.num_tasks == 1:
+            #     samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
+            #                                                                        sample_fn, context, new_means)
+            #     plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
             mse, new_means = self.compute_mse(y_all[n], pred, z_query)
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 
@@ -278,20 +277,18 @@ class DKT(nn.Module):
         return x_all, x_support, y_all, y_support
 
     def get_support_query_sines(self, n_support, params):
-        batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
-                                                                  params.meta_batch_size,
-                                                                  params.num_tasks,
+        batch, batch_labels, amp, phase = SinusoidalDataGenerator(200, params.meta_batch_size, params.num_tasks,
                                                                   params.multidimensional_amp,
-                                                                  params.multidimensional_phase,
-                                                                  params.noise).generate()
+                                                                  params.multidimensional_phase, params.noise,
+                                                                  params.out_of_range).generate()
         if self.num_tasks == 1:
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
         else:
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)
-        support_ind = list(np.random.choice(list(range(10)), replace=False, size=n_support))
-        query_ind = [i for i in range(10) if i not in support_ind]
+        support_ind = list(np.random.choice(list(range(200)), replace=False, size=n_support))
+        query_ind = [i for i in range(200) if i not in support_ind]
         x_all = inputs.to(self.device)
         y_all = targets.to(self.device)
         x_support = inputs[:, support_ind, :].to(self.device)
@@ -331,7 +328,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         ## Spectral kernel
         elif kernel == 'spectral':
             if self.dataset == "sines":
-                ard_num_dims = 1
+                ard_num_dims = 40
             else:
                 ard_num_dims = 2916
             self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=ard_num_dims)

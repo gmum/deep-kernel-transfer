@@ -85,7 +85,6 @@ def parse_args_regression():
     parser.add_argument('--model', default='Conv3', choices=["Conv3", "MLP2"], help='model: Conv{3} / MLP{2}')
     parser.add_argument('--method', default='DKT', help='DKT / transfer')
     parser.add_argument('--dataset', default='QMUL', help='QMUL / sines')
-    parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
     parser.add_argument('--update_batch_size', default=5, type=int,
                         help='Number of examples used for inner gradient update (K for K-shot learning).')
     parser.add_argument('--meta_batch_size', default=5, type=int, help='Number of tasks sampled per meta-update')
@@ -94,10 +93,10 @@ def parse_args_regression():
                         help='Different amplitudes per each example')
     parser.add_argument('--multidimensional_phase', default=True, type=str2bool,
                         help='Different phases per each example')
-    parser.add_argument('--noise', default=False, type=str2bool,
+    parser.add_argument('--noise', default="gaussian", type=str, choices=["gaussian", "heterogeneous", "None"],
                         help='Different phases per each example')
     parser.add_argument('--kernel_type', type=str, default='rbf',
-                        choices=['rbf', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])
+                        choices=['rbf', 'spectral', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])
     parser.add_argument('--save_dir', type=str, default='./save/regression')
     parser.add_argument('--num_tasks', type=int, default=1, help="the dimension of the target.")
     parser.add_argument('--multi_type', type=int, choices=[2,3], default=3, help="type of nn multi-kernel, used if num-tasks>1 "
@@ -168,6 +167,9 @@ def parse_args_regression():
     parser.add_argument('--n_support', default=5, type=int,
                         help='Number of points on trajectory to be given as support points')
     parser.add_argument('--n_test_epochs', default=10, type=int, help='How many test people?')
+    parser.add_argument('--out_of_range', action="store_true", help="whether to perform test also on out of range "
+                                                                    "samples. WARNING: FOR NOW IMPLEMENTED ONLY FOR "
+                                                                    "SINES")
     return parser.parse_args()
 
 
@@ -186,7 +188,6 @@ def get_resume_file(checkpoint_dir):
     max_epoch = np.max(epochs)
     resume_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(max_epoch))
     return resume_file
-
 
 def get_best_file(checkpoint_dir):
     best_file = os.path.join(checkpoint_dir, 'best_model.tar')
