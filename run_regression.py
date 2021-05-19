@@ -127,7 +127,7 @@ def setup_model(bb, config, device, params):
             model = DKT_flow(bb, device, num_tasks=params.num_tasks, config=config, dataset=params.dataset,
                              cnf=None, multi_type=params.multi_type)
         elif params.method == 'transfer':
-            model = FeatureTransfer(bb, device)
+            model = FeatureTransfer(bb, device, config)
         else:
             raise ValueError('Unrecognised method')
     return model

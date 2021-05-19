@@ -84,7 +84,7 @@ def parse_args_regression():
     parser.add_argument('--seed', default=0, type=int, help='Seed for Numpy and pyTorch. Default: 0 (None)')
     parser.add_argument('--model', default='Conv3', choices=["Conv3", "MLP2"], help='model: Conv{3} / MLP{2}')
     parser.add_argument('--method', default='DKT', help='DKT / transfer')
-    parser.add_argument('--dataset', default='QMUL', help='QMUL / sines / nasdaq')
+    parser.add_argument('--dataset', default='QMUL', help='QMUL / sines / nasdaq / eeg')
     parser.add_argument('--spectral', action='store_true', help='Use a spectral covariance kernel function')
     parser.add_argument('--update_batch_size', default=5, type=int,
                         help='Number of examples used for inner gradient update (K for K-shot learning).')
@@ -102,8 +102,8 @@ def parse_args_regression():
     parser.add_argument('--num_tasks', type=int, default=1, help="the dimension of the target.")
     parser.add_argument('--multi_type', type=int, choices=[2,3], default=3, help="type of nn multi-kernel, used if num-tasks>1 "
                                                                       "and kernel type == n")
-    parser.add_argument('--method_lr', type=float, default=0.00005)
-    parser.add_argument('--feature_extractor_lr', type=float, default=0.00005)
+    parser.add_argument('--method_lr', type=float, default=0.001)
+    parser.add_argument('--feature_extractor_lr', type=float, default=0.001)
     parser.add_argument('--cnf_lr', type=float, default=0.001)
 
     parser.add_argument('--all_lr', type=float, help="if not None, sets up the same given learning rate for all "

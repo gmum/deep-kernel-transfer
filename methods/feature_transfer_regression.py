@@ -9,7 +9,7 @@ from data.qmul_loader import get_batch, train_people, test_people
 class Regressor(nn.Module):
     def __init__(self):
         super(Regressor, self).__init__()
-        self.layer4 = nn.Linear(2916, 1)
+        self.layer4 = nn.Linear(1, 10)
 
     def return_clones(self):
         layer4_w = self.layer4.weight.data.clone().detach()
@@ -25,13 +25,15 @@ class Regressor(nn.Module):
 
 
 class FeatureTransfer(nn.Module):
-    def __init__(self, backbone, device):
+    def __init__(self, backbone, device, config):
         super(FeatureTransfer, self).__init__()
         regressor = Regressor()
         self.feature_extractor = backbone
         self.model = Regressor()
         self.criterion = nn.MSELoss()
         self.device = device
+        self.config = config
+
 
     def train_loop(self, epoch, optimizer, params, results_logger):
         if params.dataset == "sines":
@@ -43,7 +45,7 @@ class FeatureTransfer(nn.Module):
                                                                       params.noise).generate()
             batch = torch.from_numpy(batch)
             batch_labels = torch.from_numpy(batch_labels)
-        elif params.dataset == "nasdaq":
+        elif params.dataset == "nasdaq" or self.dataset == "eeg":
             nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
                                                 partition="train", window=params.update_batch_size * 2,
                                                 time_to_predict=params.meta_batch_size * 2)
@@ -51,7 +53,7 @@ class FeatureTransfer(nn.Module):
                                                       shuffle=True)
             batch, batch_labels = next(iter(data_loader))
             batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
-            batch_labels = batch_labels[:, :, -1]
+            batch_labels = batch_labels[:, :, -1].float()
         else:
             batch, batch_labels = get_batch(train_people)
 
@@ -82,7 +84,7 @@ class FeatureTransfer(nn.Module):
 
             inputs = torch.from_numpy(batch)
             targets = torch.from_numpy(batch_labels)
-        elif params.dataset == "nasdaq":
+        elif params.dataset == "nasdaq" or self.dataset == "eeg":
             nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
                                                 partition="test", window=params.update_batch_size * 2,
                                                 time_to_predict=params.meta_batch_size * 2)

@@ -26,9 +26,9 @@ def prepare_for_plots(pred, y_true, sample_fn, context, new_means):
         gauss_y.append(pred.mean[k])
         if new_means is not None:
             if context is not None:
-                flow_sample = sample_fn(sample.cuda(), context[k].repeat(10000, 1))
+                flow_sample = sample_fn(sample.cpu(), context[k].repeat(10000, 1))
             else:
-                flow_sample = sample_fn(sample.cuda())
+                flow_sample = sample_fn(sample.cpu())
             flow_samples.append(flow_sample)
             flow_y.append(new_means[k])
     if new_means is not None:

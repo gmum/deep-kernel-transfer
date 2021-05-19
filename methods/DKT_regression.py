@@ -74,7 +74,7 @@ class DKT(nn.Module):
             else:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
                 if train_y is None: train_y = torch.ones(10, self.num_tasks).to(self.device)
-        elif self.dataset == "nasdaq":
+        elif self.dataset == "nasdaq" or self.dataset == "eeg":
             if self.num_tasks == 1:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
                 if train_y is None: train_y = torch.ones(10).to(self.device)
@@ -120,7 +120,7 @@ class DKT(nn.Module):
         # print("NUM TRANSFORM PARAMS {}".format(sum([p.numel() for p in self.feature_extractor.parameters() if p.requires_grad])))
 
         # fighting with numerical problems with cholesky decomposition
-        with gpytorch.settings.cholesky_jitter(1e-6, 1e-8):
+        with gpytorch.settings.cholesky_jitter(1e-4, 1e-5):
             self.model.train()
             self.feature_extractor.train()
             self.likelihood.train()
@@ -141,7 +141,7 @@ class DKT(nn.Module):
                 else:
                     batch = torch.from_numpy(batch)
                     batch_labels = torch.from_numpy(batch_labels)
-            elif self.dataset == "nasdaq":
+            elif self.dataset == "nasdaq" or self.dataset == "eeg":
                 nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
                                                     partition="train", window=params.update_batch_size * 2,
                                                     time_to_predict=params.meta_batch_size * 2)
@@ -234,7 +234,7 @@ class DKT(nn.Module):
     def test_loop(self, n_support, params=None, save_dir=None):
         if self.dataset == "sines":
             x_all, x_support, y_all, y_support = self.get_support_query_sines(n_support, params)
-        elif self.dataset == "nasdaq":
+        elif self.dataset == "nasdaq" or self.dataset == "eeg":
             x_all, x_support, y_all, y_support = self.get_support_query_nasdaq(n_support, params)
         elif params is None:
             x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
@@ -391,7 +391,7 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         elif kernel == 'spectral':
             if self.dataset == "sines":
                 ard_num_dims = 1
-            elif self.dataset == "nasdaq":
+            elif self.dataset == "nasdaq" or self.dataset == "eeg":
                 ard_num_dims = 1
             else:
                 ard_num_dims = 2916

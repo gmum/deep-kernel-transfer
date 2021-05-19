@@ -5,14 +5,14 @@ class Config:
         self.data_dir['miniImagenet'] = './filelists/miniImagenet/'
         self.data_dir['omniglot'] = './filelists/omniglot/'
         self.data_dir['emnist'] = './filelists/emnist/'
-        self.data_dir['nasdaq'] = './filelists/Nasdaq_100/nasdaq100_padding.csv'
+        self.data_dir['nasdaq'] = './filelists/Nasdaq_100/A001SB1_1.csv'
         self.save_dir = args.save_dir
 
         if self.kernel_type == "nn":
             self.nn_config = {}
             if args.dataset == "sines":
                 self.nn_config["input_dim"] = args.output_dim
-            elif args.dataset == "nasdaq":
+            elif args.dataset == "nasdaq" or args.dataset == "eeg":
                 self.nn_config["input_dim"] = args.output_dim
             elif args.dataset == "QMUL":
                 self.nn_config["input_dim"] = 2916
