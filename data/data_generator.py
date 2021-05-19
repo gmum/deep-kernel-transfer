@@ -125,14 +125,59 @@ class Nasdaq100padding(Dataset):
             raise NotImplementedError
 
 
+class PowerConsumption(Dataset):
+    """power consumption dataset."""
+
+    def __init__(self, directory="../filelists/power_consumption/household_power_consumption.csv",
+                 partition="train",
+                 window=10,
+                 time_to_predict=10):
+        self.df = pd.read_csv(directory, sep=";")
+        self.df[['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+                 'Sub_metering_2', 'Sub_metering_3']] = self.df[
+            ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+             'Sub_metering_2', 'Sub_metering_3']].apply(pd.to_numeric, errors='coerce')
+
+
+        self.partition = partition
+        self.window = window
+        self.time_to_predict = time_to_predict
+
+        x_train, x_test = train_test_split(self.df, test_size=0.20, random_state=42,
+                                           shuffle=False)  # it should can be change this is just for 'in range' experiments
+        self.df_test = pd.DataFrame(x_test, columns=self.df.columns).reset_index(drop=True)
+        self.df_test = self.df_test.fillna(-1)
+        self.df_train = pd.DataFrame(x_train, columns=self.df.columns).reset_index(drop=True)
+        self.df_train = self.df_train.fillna(-1)
+
+    def __len__(self):
+        if self.partition == "train":
+            return len(self.df_train) - self.window - self.time_to_predict
+        if self.partition == "test":
+            return len(self.df_test) - self.window - self.time_to_predict
+        else:
+            raise NotImplementedError
+
+    def __getitem__(self, idx):
+        begin = idx
+        end_of_x = idx + self.window
+        if self.partition == "train":
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train[
+            ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+             'Sub_metering_2', 'Sub_metering_3']].iloc[
+                list(range(begin, end_of_x))].values
+        if self.partition == "test":
+            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test[
+            ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+             'Sub_metering_2', 'Sub_metering_3']].iloc[
+                list(range(begin, end_of_x))].values
+        else:
+            raise NotImplementedError
+
+
 # example
 if __name__ == '__main__':
     freeze_support()
-    nasdaq100padding = Nasdaq100padding(normalize=True, partition="test", window=10, time_to_predict=10)
+    nasdaq100padding = PowerConsumption(partition="train", window=10, time_to_predict=10)
     print(nasdaq100padding.__getitem__(1))
-    dataset_loader = torch.utils.data.DataLoader(nasdaq100padding,
-                                                 batch_size=4, shuffle=True)
 
-    x, y = next(iter(dataset_loader))
-    print(x.reshape(4, 10, 1))
-    print(y[:, :, -1])
