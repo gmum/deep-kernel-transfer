@@ -243,6 +243,8 @@ class DKT(nn.Module):
             x_all, x_support, y_all, y_support = self.get_support_query_sines(n_support, params)
         elif self.dataset == "nasdaq" or self.dataset == "eeg":
             x_all, x_support, y_all, y_support = self.get_support_query_nasdaq(n_support, params)
+        elif self.dataset == "power":
+            x_all, x_support, y_all, y_support = self.get_support_query_power(n_support, params)
         elif params is None:
             x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
         else:
@@ -290,14 +292,14 @@ class DKT(nn.Module):
                 # log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
                 # NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
             else:
-                NLL = -self.mll(predictions_query, y_all[n])
+                NLL = -self.mll(predictions_query, torch.tensor([y_all[n]]))
                 # log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
                 # NLL = -1.0 * torch.mean(log_py)
             if save_dir is not None and self.num_tasks == 1:
-                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
+                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, torch.tensor([y_all[n]]),
                                                                                    sample_fn, context, new_means)
                 plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
-            mse, new_means = self.compute_mse(y_all[n], pred, z_query)
+            mse, new_means = self.compute_mse(torch.tensor([y_all[n]]), pred, z_query)
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 
         if self.is_flow:
@@ -338,6 +340,29 @@ class DKT(nn.Module):
         x_support = inputs[:, support_ind, :].to(self.device)
         y_support = targets[:, support_ind].to(self.device)
         return x_all, x_support, y_all, y_support
+
+    def get_support_query_power(self, n_support, params):
+        power_consumption = PowerConsumption(directory=self.config.data_dir['power'], partition="test")
+        data_loader = torch.utils.data.DataLoader(power_consumption, batch_size=params.update_batch_size * 2,
+                                                  shuffle=True)
+        batch, batch_labels = next(iter(data_loader))
+        inputs = batch.reshape(params.update_batch_size * 2, 1)
+        targets = batch_labels[:, -1].float()
+
+        # if self.num_tasks == 1:
+        #     inputs = torch.from_numpy(batch)
+        #     targets = torch.from_numpy(batch_labels).view(batch_labels.shape[0], -1)
+        # else:
+        #     inputs = torch.from_numpy(batch)
+        #     targets = torch.from_numpy(batch_labels)
+
+        support_ind = list(np.random.choice(list(range(10)), replace=True, size=n_support))
+        query_ind = [i for i in range(10) if i not in support_ind]
+        x_all = inputs.to(self.device)
+        y_all = targets.to(self.device)
+        x_support = inputs[support_ind, :].to(self.device)
+        y_support = targets[support_ind].to(self.device)
+        return x_all.float(), x_support.float(), y_all.float(), y_support.float()
 
     def get_support_query_nasdaq(self, n_support, params):
         nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True, partition="train",
