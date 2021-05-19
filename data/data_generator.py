@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from sklearn import preprocessing
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 
 INPUT_DIM = 1
 
@@ -129,48 +129,42 @@ class PowerConsumption(Dataset):
     """power consumption dataset."""
 
     def __init__(self, directory="../filelists/power_consumption/household_power_consumption.csv",
-                 partition="train",
-                 window=10,
-                 time_to_predict=10):
+                 partition="train"):
         self.df = pd.read_csv(directory, sep=";")
         self.df[['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
                  'Sub_metering_2', 'Sub_metering_3']] = self.df[
             ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
              'Sub_metering_2', 'Sub_metering_3']].apply(pd.to_numeric, errors='coerce')
 
-
         self.partition = partition
-        self.window = window
-        self.time_to_predict = time_to_predict
 
-        x_train, x_test = train_test_split(self.df, test_size=0.20, random_state=42,
-                                           shuffle=False)  # it should can be change this is just for 'in range' experiments
+        # x_train, x_test = train_test_split(self.df, test_size=0.20, random_state=42,
+        #                                    shuffle=False)  # it should can be change this is just for 'in range' experiments
+
+        x_train = self.df.iloc[list(range(0, 1440))]
+        x_test = self.df.iloc[list(range(1441, 2880))]
         self.df_test = pd.DataFrame(x_test, columns=self.df.columns).reset_index(drop=True)
         self.df_test = self.df_test.fillna(-1)
         self.df_train = pd.DataFrame(x_train, columns=self.df.columns).reset_index(drop=True)
         self.df_train = self.df_train.fillna(-1)
+        self.seed = 42
+        np.random.seed(self.seed)
 
     def __len__(self):
         if self.partition == "train":
-            return len(self.df_train) - self.window - self.time_to_predict
+            return len(self.df_train)
         if self.partition == "test":
-            return len(self.df_test) - self.window - self.time_to_predict
-        else:
-            raise NotImplementedError
+            return len(self.df_test)
 
     def __getitem__(self, idx):
-        begin = idx
-        end_of_x = idx + self.window
         if self.partition == "train":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_train[
-            ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
-             'Sub_metering_2', 'Sub_metering_3']].iloc[
-                list(range(begin, end_of_x))].values
+            return idx, self.df_train[
+                ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+                 'Sub_metering_2', 'Sub_metering_3']].iloc[idx].values
         if self.partition == "test":
-            return torch.FloatTensor(list(range(begin, end_of_x))), self.df_test[
-            ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
-             'Sub_metering_2', 'Sub_metering_3']].iloc[
-                list(range(begin, end_of_x))].values
+            return idx, self.df_test[
+                ['Global_active_power', 'Global_reactive_power', 'Voltage', 'Global_intensity', 'Sub_metering_1',
+                 'Sub_metering_2', 'Sub_metering_3']].iloc[idx].values
         else:
             raise NotImplementedError
 
@@ -178,6 +172,8 @@ class PowerConsumption(Dataset):
 # example
 if __name__ == '__main__':
     freeze_support()
-    nasdaq100padding = PowerConsumption(partition="train", window=10, time_to_predict=10)
-    print(nasdaq100padding.__getitem__(1))
+    nasdaq100padding = PowerConsumption(partition="train")
+    dataloader = DataLoader(nasdaq100padding, batch_size=10, shuffle=True, num_workers=0)
 
+    for i_batch, sample_batched in enumerate(dataloader):
+        print(i_batch, sample_batched[0], sample_batched[1][:, -1])
