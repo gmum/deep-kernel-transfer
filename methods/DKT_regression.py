@@ -6,8 +6,9 @@ import torch
 import torch.nn as nn
 from gpytorch.constraints import GreaterThan
 from gpytorch.priors import UniformPrior
+from torch.utils.data import DataLoader
 
-from data.data_generator import SinusoidalDataGenerator, Nasdaq100padding
+from data.data_generator import SinusoidalDataGenerator, Nasdaq100padding, PowerConsumption
 from data.qmul_loader import get_batch, train_people, test_people
 from models.kernels import NNKernel, MultiNNKernel
 from training.utils import prepare_for_plots, plot_histograms
@@ -74,7 +75,7 @@ class DKT(nn.Module):
             else:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
                 if train_y is None: train_y = torch.ones(10, self.num_tasks).to(self.device)
-        elif self.dataset == "nasdaq" or self.dataset == "eeg":
+        elif self.dataset == "nasdaq" or self.dataset == "eeg" or self.dataset == "power":
             if self.num_tasks == 1:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
                 if train_y is None: train_y = torch.ones(10).to(self.device)
@@ -141,6 +142,7 @@ class DKT(nn.Module):
                 else:
                     batch = torch.from_numpy(batch)
                     batch_labels = torch.from_numpy(batch_labels)
+                print(batch_labels.shape)
             elif self.dataset == "nasdaq" or self.dataset == "eeg":
                 nasdaq100padding = Nasdaq100padding(directory=self.config.data_dir['nasdaq'], normalize=True,
                                                     partition="train", window=params.update_batch_size * 2,
@@ -150,14 +152,19 @@ class DKT(nn.Module):
                 batch, batch_labels = next(iter(data_loader))
                 batch = batch.reshape(params.update_batch_size * 2, params.meta_batch_size * 2, 1)
                 batch_labels = batch_labels[:, :, -1].float()
+            elif self.dataset == "power":
+                power = PowerConsumption(directory=self.config.data_dir['power'], partition="train")
+                dataloader = DataLoader(power, batch_size=params.update_batch_size * 2, shuffle=True, num_workers=0)
             else:
                 batch, batch_labels = get_batch(train_people)
 
-            batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
+            # batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
             # print(batch.shape, batch_labels.shape)
-            for inputs, labels in zip(batch, batch_labels):
+            # for inputs, labels in zip(batch, batch_labels):
+            for _, (inputs, labels) in enumerate(dataloader):
                 optimizer.zero_grad()
-                z = self.feature_extractor(inputs)
+                labels = labels[:, -1].float()
+                z = self.feature_extractor(inputs.reshape(inputs.shape[0], 1).float())
                 if self.add_noise:
                     labels = labels + torch.normal(0, 0.1, size=labels.shape).to(labels)
                 if self.is_flow:
