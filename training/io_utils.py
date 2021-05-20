@@ -93,7 +93,7 @@ def parse_args_regression():
                         help='Different amplitudes per each example')
     parser.add_argument('--multidimensional_phase', default=True, type=str2bool,
                         help='Different phases per each example')
-    parser.add_argument('--noise', default="gaussian", type=str, choices=["gaussian", "heterogeneous", "None"],
+    parser.add_argument('--noise', default="gaussian", type=str, choices=["gaussian", "heterogeneous", "None", "hetero_multi"],
                         help='Different phases per each example')
     parser.add_argument('--kernel_type', type=str, default='rbf',
                         choices=['rbf', 'spectral', 'bncossim', 'matern', 'poli1', 'poli2', 'cossim', 'nn'])

@@ -39,7 +39,10 @@ class ResultsLogger:
 
 class NeptuneLogger:
     def __init__(self, params):
-        self.run = neptune.init(PROJECT_NAME)
+        try:
+           self.run = neptune.init(PROJECT_NAME)
+        except neptune.new.exceptions.NeptuneConnectionLostException:
+           self.run = neptune.init(PROJECT_NAME, mode="offline")
         self.run["parameters"] = vars(params)
 
     def log_dict(self, dict):
