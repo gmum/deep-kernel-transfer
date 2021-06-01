@@ -476,3 +476,41 @@ def ResNet50(flatten=True):
 
 def ResNet101(flatten=True):
     return ResNet(BottleneckBlock, [3, 4, 23, 3], [256, 512, 1024, 2048], flatten)
+
+
+# backbone for objects dataset
+class Encoder(nn.Module):
+    def __init__(self):
+        super(Encoder, self).__init__()
+        self.output_dim = 64
+        self.layer1 = nn.Conv2d(1, 32, 3, stride=(2, 2))
+        self.layer2 = nn.Conv2d(32, 48, 3, stride=(2, 2))
+        self.max_pooling_layer = nn.MaxPool2d((2, 2))
+        self.layer3 = nn.Conv2d(48, 64, 3, stride=(2, 2))
+        self.layer4 = nn.Flatten()
+        self.layer5 = nn.Linear(3136, 64)
+
+    def return_clones(self):
+        layer1_w = self.layer1.weight.data.clone().detach()
+        layer2_w = self.layer2.weight.data.clone().detach()
+        max_pooling_layer_w = self.max_pooling_layer.weight.data.clone().detach()
+        layer3_w = self.layer3.weight.data.clone().detach()
+        layer4_w = self.layer4.weight.data.clone().detach()
+        layer5_w = self.layer4.weight.data.clone().detach()
+        return [layer1_w, layer2_w, max_pooling_layer_w, layer3_w, layer4_w, layer5_w]
+
+    def assign_clones(self, weights_list):
+        self.layer1.weight.data.copy_(weights_list[0])
+        self.layer2.weight.data.copy_(weights_list[1])
+        self.layer3.weight.data.copy_(weights_list[2])
+
+    def forward(self, x):
+        out = F.relu(self.layer1(x))
+        out = F.relu(self.layer2(out))
+        out = self.max_pooling_layer(out)
+        out = F.relu(self.layer3(out))
+        out = self.layer4(out)
+        # print(out.shape)
+        out = self.layer5(out)
+        out = out.view(out.size(0), -1)
+        return out

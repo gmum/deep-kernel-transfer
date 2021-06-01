@@ -148,6 +148,8 @@ def setup_flow(device, params, context_dim):
 def setup_backbone(device, params):
     if params.model == "MLP2":
         bb = backbone.MLP2(input_dim=1, output_dim=params.output_dim).to(device)
+    elif params.model == "Encoder":
+        bb = backbone.Encoder().to(device)
     elif params.model == "Conv3":
         bb = backbone.Conv3().to(device)
     else:

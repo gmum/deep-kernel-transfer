@@ -7,6 +7,7 @@ import torch.nn as nn
 
 from data.data_generator import SinusoidalDataGenerator
 from data.qmul_loader import get_batch, train_people, test_people
+from data.objects_pose_loader import get_dataset, get_objects_batch
 from models.kernels import NNKernel, MultiNNKernel, NNKernelNoInner
 from training.utils import normal_logprob, prepare_for_plots, plot_histograms
 
@@ -60,11 +61,19 @@ class DKT(nn.Module):
             self.is_flow = False
         self.add_noise = add_noise
         self.get_model_likelihood_mll()  # Init model, likelihood, and mll
+        if self.dataset == 'objects':
+            self.x_objects_train, self.y_objects_train = get_dataset(train=True)
+            self.x_objects_test, self.y_objects_test = get_dataset(train=False)
 
     def get_model_likelihood_mll(self, train_x=None, train_y=None):
         if self.dataset == 'QMUL':
             if train_x is None: train_x = torch.ones(19, 2916).to(self.device)
             if train_y is None: train_y = torch.ones(19).to(self.device)
+        elif self.dataset == 'objects':
+            # TODO - change sizes
+            if train_x is None: train_x = torch.ones(30, 64).to(self.device)
+            # if train_x is None: train_x = torch.ones(30, 3136).to(self.device)
+            if train_y is None: train_y = torch.ones(30).to(self.device)
         else:
             if self.num_tasks == 1:
                 if train_x is None: train_x = torch.ones(10, self.feature_extractor.output_dim).to(self.device)
@@ -106,8 +115,15 @@ class DKT(nn.Module):
         if self.is_flow:
             self.cnf.train()
 
-        if self.dataset != "sines":
+        if self.dataset == "QMUL":
             batch, batch_labels = get_batch(train_people)
+        elif self.dataset == "objects":
+            batch, batch_labels = get_objects_batch(self.x_objects_train,
+                                                    self.y_objects_train,
+                                                    params.meta_batch_size,
+                                                    params.update_batch_size,
+                                                    params.num_tasks)
+            batch = torch.reshape(batch, (batch.shape[0], batch.shape[1], 1, 128, 128))
         else:
             batch, batch_labels, amp, phase = SinusoidalDataGenerator(params.update_batch_size * 2,
                                                                       params.meta_batch_size,
@@ -124,7 +140,6 @@ class DKT(nn.Module):
                 batch_labels = torch.from_numpy(batch_labels)
 
         batch, batch_labels = batch.to(self.device), batch_labels.to(self.device)
-        # print(batch.shape, batch_labels.shape)
         for inputs, labels in zip(batch, batch_labels):
             optimizer.zero_grad()
             z = self.feature_extractor(inputs)
@@ -201,8 +216,10 @@ class DKT(nn.Module):
         return delta_log_py, labels, y
 
     def test_loop(self, n_support, params=None, save_dir=None):
-        if params is None or self.dataset != "sines":
+        if params is None or self.dataset == "QMUL":
             x_all, x_support, y_all, y_support = self.get_support_query_qmul(n_support)
+        elif self.dataset == "objects":
+            x_all, x_support, x_query, y_all, y_support, y_query = self.get_support_query_objects(n_support, params)
         elif self.dataset == "sines":
             x_all, x_support, y_all, y_support = self.get_support_query_sines(n_support, params)
         else:
@@ -229,7 +246,7 @@ class DKT(nn.Module):
             self.cnf.eval()
 
         with torch.no_grad():
-            z_query = self.feature_extractor(x_all[n]).detach()
+            z_query = self.feature_extractor(x_query[n]).detach()
             predictions_query = self.model(z_query)
             pred = self.likelihood(predictions_query)
             context = None
@@ -244,26 +261,43 @@ class DKT(nn.Module):
                     new_means = sample_fn(mean_base, context)
                 else:
                     new_means = sample_fn(mean_base)
-                delta_log_py, _, y = self.apply_flow(y_all[n], z_query)
+                delta_log_py, _, y = self.apply_flow(y_query[n], z_query)
                 log_py = -self.mll(predictions_query, y.squeeze())
                 NLL = log_py + torch.mean(delta_log_py.squeeze())
                 #log_py = normal_logprob(y.squeeze(), pred.mean, pred.stddev)
                 #NLL = -1.0 * torch.mean(log_py - delta_log_py.squeeze())
             else:
-                NLL = -self.mll(predictions_query, y_all[n])
+                NLL = -self.mll(predictions_query, y_query[n])
                 #log_py = normal_logprob(y_all[n], pred.mean, pred.stddev)
                 #NLL = -1.0 * torch.mean(log_py)
-            if save_dir is not None and self.num_tasks == 1:
-                samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_all[n],
-                                                                                   sample_fn, context, new_means)
-                plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
-            mse, new_means = self.compute_mse(y_all[n], pred, z_query)
+            # if save_dir is not None and self.num_tasks == 1:
+            #     samples, true_y, gauss_y, flow_samples, flow_y = prepare_for_plots(pred, y_query[n],
+            #                                                                        sample_fn, context, new_means)
+            #     plot_histograms(save_dir, samples, true_y, gauss_y, n, flow_samples, flow_y)
+            mse, new_means = self.compute_mse(y_query[n], pred, z_query)
             lower, upper = pred.confidence_region()  # 2 standard deviations above and below the mean
 
         if self.is_flow:
             return mse, NLL, new_means, lower, upper, x_all[n], y_all[n]
         else:
             return mse, NLL, pred.mean, lower, upper, x_all[n], y_all[n]
+
+    def get_support_query_objects(self, n_support, params):
+        inputs, targets = get_objects_batch(self.x_objects_train,
+                                            self.y_objects_train,
+                                            params.meta_batch_size,
+                                            params.update_batch_size,
+                                            params.num_tasks)
+        inputs = torch.reshape(inputs, (inputs.shape[0], inputs.shape[1], 1, 128, 128))
+        support_ind = list(np.random.choice(list(range(30)), replace=False, size=n_support))
+        query_ind = [i for i in range(30) if i not in support_ind]
+        x_all = inputs.to(self.device)
+        y_all = targets.to(self.device)
+        x_support = inputs[:, support_ind, :, :, :].to(self.device)
+        y_support = targets[:, support_ind].to(self.device)
+        x_query = inputs[:, query_ind, :, :, :].to(self.device)
+        y_query = targets[:, query_ind].to(self.device)
+        return x_all, x_support, x_query, y_all, y_support, y_query
 
     def get_support_query_qmul(self, n_support):
         inputs, targets = get_batch(test_people)
@@ -273,7 +307,7 @@ class DKT(nn.Module):
         y_all = targets.to(self.device)
         x_support = inputs[:, support_ind, :, :, :].to(self.device)
         y_support = targets[:, support_ind].to(self.device)
-        x_query = inputs[:, query_ind, :, :, :]
+        x_query = inputs[:, query_ind, :, :, :].to(self.device)
         y_query = targets[:, query_ind].to(self.device)
         return x_all, x_support, y_all, y_support
 
@@ -332,13 +366,12 @@ class ExactGPLayer(gpytorch.models.ExactGP):
         elif kernel == 'spectral':
             if self.dataset == "sines":
                 ard_num_dims = 1
+            elif self.dataset == 'objects':
+                ard_num_dims = 64
             else:
                 ard_num_dims = 2916
             self.covar_module = gpytorch.kernels.SpectralMixtureKernel(num_mixtures=4, ard_num_dims=ard_num_dims)
         elif kernel == "nn":
-            # self.kernel = NNKernelNoInner(input_dim=config.nn_config["input_dim"],
-            #                        num_layers=config.nn_config["num_layers"],
-            #                        hidden_dim=config.nn_config["hidden_dim"])
 
             self.kernel = NNKernel(input_dim=config.nn_config["input_dim"],
                                output_dim=config.nn_config["output_dim"],

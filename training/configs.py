@@ -13,10 +13,12 @@ class Config:
                 self.nn_config["input_dim"] = args.output_dim
             elif args.dataset == "QMUL":
                 self.nn_config["input_dim"] = 2916
+            elif args.dataset == "objects":
+                self.nn_config["input_dim"] = 64
             elif args.dataset == "CUB":
                 self.nn_config["input_dim"] = 1600
             else:
                 raise ValueError("input dim for nn kernel not known for value {}".format(args.dataset))
-            self.nn_config["hidden_dim"] = 16
-            self.nn_config["output_dim"] = 16
-            self.nn_config["num_layers"] = 1
+            self.nn_config["hidden_dim"] = 64
+            self.nn_config["output_dim"] = 64
+            self.nn_config["num_layers"] = 4
