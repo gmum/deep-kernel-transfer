@@ -1,6 +1,6 @@
 Initial implementation of 
 
-#### "Non-Gaussian Gaussian Processesfor Few-Shot Regression"
+#### "Non-Gaussian Gaussian Processes for Few-Shot Regression"
 
 **final version will be released to github after the final decisions of NeurIPS**
 
@@ -40,26 +40,27 @@ Exemplary `NGGP` usage:
 source activate object_tracking
 
 python run_regression.py \
---neptune \
 --dataset sines \
 --model=MLP2 \
 --method="DKT" \
 --output_dim=40 \
 --seed=1 \
---save_dir ./save/flow_sines" \
+--save_dir ./save/flow_sines_rbf" \
 --kernel_type rbf \
---stop_epoch 5000 \
+--stop_epoch 50000 \
 --all_lr 1e-3 \
 --meta_batch_size 1 \
 --multidimensional_phase False \
 --multidimensional_amp False \
---noise heterogeneous \
+--noise hetero_multi \
 --use_conditional True \
 --context_type backbone \
---n_test_epochs 5 \
+--n_test_epochs 500 \
 --n_support 5 \
 --flow
 ```
+
+This will run the training on the sines dataset with heteroskedastic noise. In order to change the QMUL datasets provide `--dataset QMUL`. In order to perform the test add to the above command line options `--test`. See the *Supplementary Materials A* for the description of the used in the paper hyperparameters for each dataset. 
 
 ## Acknowledgements
 
