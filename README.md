@@ -20,9 +20,35 @@ All necessary libraries are in `environment.yml`.
  
 
 ## Experiments
+Exemplary `DKT` usage:
+```
+source activate object_tracking
 
-To fill in.
+python run_regression.py \
+--dataset QMUL \
+--model=Conv3 \
+--method="DKT" \
+--output_dim=1 \
+--seed=1 \
+--save_dir ./save/"regression_DKT_QMUL" \
+--kernel_type rbf \
+--stop_epoch 1000
+```
 
+Exemplary `DKT` usage:
+```
+source activate object_tracking
+
+python run_regression.py \
+--dataset QMUL \
+--model=Conv3 \
+--method="DKT" \
+--output_dim=1 \
+--seed=1 \
+--save_dir ./save/"regression_DKT_QMUL" \
+--kernel_type rbf \
+--stop_epoch 1000
+```
 ## Acknowledgements
 
 This repository is a fork of: [https://github.com/BayesWatch/deep-kernel-transfer](https://github.com/BayesWatch/deep-kernel-transfer)
