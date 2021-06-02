@@ -35,20 +35,32 @@ python run_regression.py \
 --stop_epoch 1000
 ```
 
-Exemplary `DKT` usage:
+Exemplary `NGGP` usage:
 ```
 source activate object_tracking
 
 python run_regression.py \
---dataset QMUL \
---model=Conv3 \
+--neptune \
+--dataset sines \
+--model=MLP2 \
 --method="DKT" \
---output_dim=1 \
+--output_dim=40 \
 --seed=1 \
---save_dir ./save/"regression_DKT_QMUL" \
+--save_dir ./save/flow_sines" \
 --kernel_type rbf \
---stop_epoch 1000
+--stop_epoch 5000 \
+--all_lr 1e-3 \
+--meta_batch_size 1 \
+--multidimensional_phase False \
+--multidimensional_amp False \
+--noise heterogeneous \
+--use_conditional True \
+--context_type backbone \
+--n_test_epochs 5 \
+--n_support 5 \
+--flow
 ```
+
 ## Acknowledgements
 
 This repository is a fork of: [https://github.com/BayesWatch/deep-kernel-transfer](https://github.com/BayesWatch/deep-kernel-transfer)
