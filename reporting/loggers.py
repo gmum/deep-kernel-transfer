@@ -2,7 +2,7 @@ import neptune.new as neptune
 import numpy as np
 from copy import deepcopy
 
-PROJECT_NAME = "GMUM/deep-kernels"
+PROJECT_NAME = "deep-kernels"
 from neptune.new.types import File
 
 
